@@ -1,5 +1,5 @@
-import { Link } from '@inertiajs/react';
-import { LayoutGrid } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { LayoutGrid, UsersRound } from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -15,15 +15,42 @@ import {
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
+type AuthUser = {
+    id?: number;
+    name?: string;
+    email?: string;
+    rol?: string | null;
+    role?: string | null;
+};
+
+type SharedPageProps = {
+    auth?: {
+        user?: AuthUser | null;
+    };
+};
 
 export function AppSidebar() {
+    const page = usePage<SharedPageProps>();
+
+    const user = page.props.auth?.user;
+    const userRole = String(user?.rol ?? user?.role ?? '').toLowerCase();
+
+    const mainNavItems: NavItem[] = [
+        {
+            title: 'Dashboard',
+            href: dashboard(),
+            icon: LayoutGrid,
+        },
+    ];
+
+    if (userRole === 'coordinador') {
+        mainNavItems.push({
+            title: 'Usuarios',
+            href: '/usuarios',
+            icon: UsersRound,
+        });
+    }
+
     return (
         <Sidebar
             collapsible="icon"
@@ -45,8 +72,8 @@ export function AppSidebar() {
             <style>{`
                 [data-sidebar="sidebar"] {
                     background:
-                        radial-gradient(circle at top left, color-mix(in srgb, var(--accent-gold) 16%, transparent), transparent 34%),
-                        linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 10%, transparent), transparent 38%),
+                        radial-gradient(circle at top left, color-mix(in srgb, var(--accent-primary) 8%, transparent), transparent 34%),
+                        linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 8%, transparent), transparent 38%),
                         var(--bg-surface) !important;
                     color: var(--text-primary) !important;
                     border-color: var(--border-subtle) !important;
@@ -104,7 +131,7 @@ export function AppSidebar() {
                     flex-shrink: 0;
                     overflow: hidden;
                     border-radius: 0.7rem;
-                    border: 1px solid color-mix(in srgb, var(--accent-gold) 50%, transparent);
+                    border: 1px solid color-mix(in srgb, var(--accent-gold) 35%, transparent);
                     background: var(--bg-subtle);
                     box-shadow: var(--shadow-sm);
                 }
@@ -167,7 +194,8 @@ export function AppSidebar() {
                                             alt="Univalle"
                                             onError={(event) => {
                                                 const image = event.currentTarget;
-                                                const fallback = image.nextElementSibling as HTMLElement | null;
+                                                const fallback =
+                                                    image.nextElementSibling as HTMLElement | null;
 
                                                 image.style.display = 'none';
 
