@@ -2,30 +2,29 @@
 
 Sistema web académico para la gestión y seguimiento de proyectos estudiantiles, desarrollado con **Laravel**, **React**, **Inertia.js**, **Vite**, **Docker** y **PostgreSQL**.
 
+> **El entorno está completamente dockerizado.** No se necesita PHP, Composer ni Node instalados localmente. Solo se necesita **Git** y **Docker Desktop**.
+
 ---
 
 ## Stack tecnológico
 
 | Capa | Tecnología |
 |---|---|
-| Backend | Laravel 13 |
+| Backend | Laravel 13 (PHP 8.4) |
 | Frontend | React + Inertia.js + Vite |
-| Base de datos | PostgreSQL 16 (Docker) |
-| Administración BD | pgAdmin 4 (Docker) |
+| Base de datos | PostgreSQL 16 |
+| Administración BD | pgAdmin 4 |
 | Estilos | Tailwind CSS |
+| Entorno | Docker + Docker Compose |
 
 ---
 
 ## Requisitos previos
 
-Cada integrante debe tener instalado antes de clonar el proyecto:
+Cada integrante solo necesita:
 
 - [Git](https://git-scm.com/)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (con WSL2 en Windows)
-- PHP 8.3 o superior
-- [Composer](https://getcomposer.org/)
-- Node.js 20 o superior
-- npm
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — con WSL2 habilitado en Windows
 
 Verificar instalaciones:
 
@@ -33,10 +32,6 @@ Verificar instalaciones:
 git --version
 docker --version
 docker compose version
-php -v
-composer -V
-node -v
-npm -v
 ```
 
 ---
@@ -70,51 +65,33 @@ Abrir `.env` y configurar las siguientes variables:
 APP_NAME="Proyectos Académicos Univalle"
 APP_ENV=local
 APP_DEBUG=true
-APP_URL=http://127.0.0.1:8000
+APP_URL=http://localhost:8000
 
 APP_LOCALE=es
 APP_FALLBACK_LOCALE=es
 APP_FAKER_LOCALE=es_ES
 
 DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5433
+DB_HOST=sudosquad_db
+DB_PORT=5432
 DB_DATABASE=sudosquad_db
 DB_USERNAME=sudosquad_user
 DB_PASSWORD=sudosquad_secret_2025
-
-MAIL_MAILER=log
-MAIL_SCHEME=null
-MAIL_HOST=127.0.0.1
-MAIL_PORT=2525
-MAIL_USERNAME=null
-MAIL_PASSWORD=null
-MAIL_FROM_ADDRESS="hello@example.com"
-MAIL_FROM_NAME="${APP_NAME}"
 ```
 
-> **Importante:** `APP_NAME` debe ir entre comillas porque contiene espacios.
+> **Importante:** `DB_HOST` debe ser `sudosquad_db` (nombre del contenedor), no `127.0.0.1`. El puerto es `5432` interno de Docker, no `5433`.
 
 ---
 
-## 3. Instalar dependencias
-
-```bash
-composer install
-npm install
-```
-
-> No ejecutar `npm audit fix --force` — puede romper versiones del proyecto.
-
----
-
-## 4. Levantar la base de datos con Docker
+## 3. Levantar todo el entorno
 
 ```bash
 docker compose up -d
 ```
 
-Verificar que los contenedores estén corriendo:
+La primera vez tarda varios minutos porque construye las imágenes de PHP y Node. Las siguientes veces es inmediato.
+
+Verificar que los 4 contenedores estén corriendo:
 
 ```bash
 docker ps
@@ -123,6 +100,18 @@ docker ps
 Deben aparecer:
 - `sudosquad_postgres`
 - `sudosquad_pgadmin`
+- `sudosquad_laravel`
+- `sudosquad_vite`
+
+---
+
+## 4. Acceder al sistema
+
+| Servicio | URL |
+|---|---|
+| Aplicación Laravel | http://localhost:8000 |
+| Vite / React HMR | http://localhost:5173 |
+| pgAdmin | http://localhost:5051 |
 
 ---
 
@@ -131,8 +120,9 @@ Deben aparecer:
 | Campo | Valor |
 |---|---|
 | Motor | PostgreSQL 16 |
-| Host (desde Laravel) | `127.0.0.1` |
-| Puerto (desde Laravel) | `5433` |
+| Host (desde Laravel/Docker) | `sudosquad_db` |
+| Host (desde tu máquina) | `127.0.0.1` |
+| Puerto (desde tu máquina) | `5433` |
 | Base de datos | `sudosquad_db` |
 | Usuario | `sudosquad_user` |
 | Contraseña | `sudosquad_secret_2025` |
@@ -141,14 +131,14 @@ Deben aparecer:
 
 ## 6. Acceder a pgAdmin
 
-Abrir en el navegador: [http://localhost:5051](http://localhost:5051)
+Abrir: [http://localhost:5051](http://localhost:5051)
 
 | Campo | Valor |
 |---|---|
 | Correo | `admin@sudosquad.dev` |
 | Contraseña | `admin_2025` |
 
-**Registrar el servidor en pgAdmin:**
+**Registrar el servidor:**
 
 1. Click derecho en **Servers** → **Register** → **Server**
 2. Pestaña **General** → Name: `SudoSquad PostgreSQL`
@@ -161,30 +151,13 @@ Abrir en el navegador: [http://localhost:5051](http://localhost:5051)
    - Activar **Save password**
 4. Click **Save**
 
-> En pgAdmin se usa `sudosquad_db` como host porque ambos contenedores comparten la misma red Docker. En Laravel se usa `127.0.0.1` con puerto `5433`.
-
 ---
 
-## 7. Generar la clave de Laravel
+## 7. Base de datos inicial
 
-```bash
-php artisan key:generate
-php artisan optimize:clear
-```
+El archivo `init.sql` se ejecuta automáticamente la primera vez que Docker crea el contenedor de PostgreSQL. No se necesita correr migraciones manualmente.
 
----
-
-## 8. Base de datos inicial
-
-El archivo `init.sql` se ejecuta automáticamente cuando Docker crea el contenedor por primera vez. No es necesario correr migraciones manualmente.
-
-Verificar conexión:
-
-```bash
-php artisan migrate:status
-```
-
-Si Docker ya había creado el volumen antes y necesitas reiniciar la base de datos desde cero:
+Para reiniciar la base de datos desde cero:
 
 ```bash
 docker compose down -v
@@ -195,73 +168,124 @@ docker compose up -d
 
 ---
 
-## 9. Levantar el proyecto
+## 8. Comandos del día a día
 
-En la **primera terminal:**
-
-```bash
-php artisan serve
-```
-
-En una **segunda terminal:**
-
-```bash
-npm run dev
-```
-
-La aplicación estará disponible en: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-
----
-
-## 10. Instalación completa desde cero
-
-```bash
-git clone https://github.com/FidelEliseoReyesRamirez/Proyectos_Academicos.git
-cd Proyectos_Academicos
-cp .env.example .env        # Windows: copy .env.example .env
-composer install
-npm install
-docker compose up -d
-php artisan key:generate
-php artisan optimize:clear
-php artisan serve
-```
-
-Segunda terminal:
-
-```bash
-cd Proyectos_Academicos
-npm run dev
-```
-
----
-
-## 11. Comandos diarios
-
-Cada integrante debe ejecutar al iniciar el día:
+Cada integrante ejecuta al iniciar el día:
 
 ```bash
 git checkout main
 git pull origin main
 docker compose up -d
-composer install
-npm install
-php artisan optimize:clear
 ```
 
-Primera terminal:
-```bash
-php artisan serve
-```
+Para apagar todo:
 
-Segunda terminal:
 ```bash
-npm run dev
+docker compose down
 ```
 
 ---
 
-## 12. Usuarios y roles
+## 9. Ejecutar comandos de Laravel (Artisan)
+
+Como Laravel corre dentro de Docker, todos los comandos de Artisan se ejecutan así:
+
+```bash
+docker exec -it sudosquad_laravel php artisan <comando>
+```
+
+Ejemplos:
+
+```bash
+# Limpiar caché
+docker exec -it sudosquad_laravel php artisan optimize:clear
+
+# Ver rutas
+docker exec -it sudosquad_laravel php artisan route:list
+
+# Estado de migraciones
+docker exec -it sudosquad_laravel php artisan migrate:status
+
+# Limpiar configuración
+docker exec -it sudosquad_laravel php artisan config:clear
+```
+
+---
+
+## 10. Usar Tinker
+
+```bash
+docker exec -it sudosquad_laravel php artisan tinker
+```
+
+Dentro de Tinker, crear un usuario coordinador:
+
+```php
+use App\Models\User;
+
+User::create([
+    'name' => 'Nombre Apellido',
+    'email' => 'correo@gmail.com',
+    'password' => bcrypt('Contrasena123!'),
+    'rol' => 'coordinador',
+    'activo' => true,
+]);
+```
+
+Asignar rol coordinador a un usuario existente:
+
+```php
+use App\Models\User;
+
+User::where('email', 'correo@gmail.com')->update([
+    'rol' => 'coordinador',
+    'activo' => true,
+]);
+```
+
+Salir de Tinker:
+
+```php
+exit
+```
+
+---
+
+## 11. Ejecutar npm (frontend)
+
+El contenedor `sudosquad_vite` ya corre `npm run dev` automáticamente al levantar Docker. No es necesario ejecutarlo manualmente.
+
+Si necesitas correr un comando npm puntual:
+
+```bash
+docker exec -it sudosquad_vite npm <comando>
+```
+
+Ejemplo:
+
+```bash
+docker exec -it sudosquad_vite npm install
+```
+
+---
+
+## 12. Ejecutar Composer
+
+El contenedor `sudosquad_laravel` ya corre `composer install` automáticamente al arrancar. Si necesitas un comando específico:
+
+```bash
+docker exec -it sudosquad_laravel composer <comando>
+```
+
+Ejemplo:
+
+```bash
+docker exec -it sudosquad_laravel composer dump-autoload
+```
+
+---
+
+## 13. Usuarios y roles
 
 Los roles se almacenan en `users.rol`:
 
@@ -276,27 +300,6 @@ El estado del usuario se almacena en `users.activo`. Un usuario con `activo = fa
 
 ---
 
-## 13. Asignar rol de coordinador
-
-```bash
-php artisan tinker
-```
-
-```php
-use App\Models\User;
-
-User::where('email', 'correo@gmail.com')->update([
-    'rol' => 'coordinador',
-    'activo' => true,
-]);
-
-exit
-```
-
-Cerrar sesión e iniciar sesión nuevamente para aplicar el cambio.
-
----
-
 ## 14. Módulo de gestión de usuarios
 
 Solo accesible con rol `coordinador`.
@@ -307,8 +310,6 @@ Solo accesible con rol `coordinador`.
 | `/usuarios/crear` | Crear usuario |
 | `/usuarios/{id}/editar` | Editar usuario |
 | `/usuarios/papelera` | Usuarios inactivos |
-
-**Funciones disponibles:** crear, editar, asignar rol, activar/desactivar, restaurar desde papelera, filtrar por nombre, correo, rol, estado y fecha. Paginación de 20 registros.
 
 **Restricciones:**
 - No se puede desactivar al último coordinador activo.
@@ -321,9 +322,7 @@ Solo accesible con rol `coordinador`.
 
 - Inicio de sesión y registro
 - Recuperación de contraseña
-- Confirmación de contraseña
-- Verificación de correo electrónico
-- Bloqueo temporal tras 5 intentos fallidos
+- Bloqueo temporal tras 5 intentos fallidos consecutivos
 - Validación de cuenta activa/inactiva
 - Control de acceso basado en roles (RBAC) mediante middleware
 
@@ -361,187 +360,159 @@ git push origin main
 **Actualizar una rama con cambios de main:**
 ```bash
 git checkout nombre-de-la-rama
-git pull origin nombre-de-la-rama
 git merge main
 ```
 
-Si hay conflictos, resolverlos y luego:
-```bash
-git add .
-git commit -m "Resolve merge conflicts"
-```
-
 ---
 
-## 17. Comandos útiles de Laravel
+## 17. Comandos útiles de Docker
 
 ```bash
-php artisan optimize:clear    # Limpiar caché general
-php artisan config:clear      # Limpiar configuración
-php artisan route:clear       # Limpiar rutas
-php artisan view:clear        # Limpiar vistas
-php artisan route:list        # Ver todas las rutas
-php artisan tinker            # Consola interactiva
-php artisan migrate:status    # Estado de migraciones
-```
+# Levantar todos los contenedores
+docker compose up -d
 
----
-
-## 18. Comandos útiles de Docker
-
-```bash
-docker compose up -d          # Levantar contenedores
-docker ps                     # Ver contenedores activos
-docker compose down           # Detener contenedores
-docker compose down -v        # Detener y borrar volúmenes
-docker compose up -d --build  # Reconstruir contenedores
-docker compose logs -f        # Ver logs en tiempo real
-docker logs sudosquad_postgres 2>&1 | tail -20  # Logs de PostgreSQL
-```
-
----
-
-## 19. Solución de errores comunes
-
-**Error: `Failed to parse dotenv file` / `Encountered unexpected whitespace`**
-
-Verificar que `APP_NAME` esté entre comillas:
-```env
-APP_NAME="Proyectos Académicos Univalle"
-```
-
----
-
-**Error de conexión a PostgreSQL**
-
-Verificar que Docker esté activo:
-```bash
+# Ver contenedores activos
 docker ps
-```
 
-Verificar variables en `.env`:
-```env
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5433
-DB_DATABASE=sudosquad_db
-DB_USERNAME=sudosquad_user
-DB_PASSWORD=sudosquad_secret_2025
+# Detener contenedores (sin borrar datos)
+docker compose down
+
+# Detener y borrar volúmenes (reset total de BD)
+docker compose down -v
+
+# Reconstruir imágenes después de cambiar un Dockerfile
+docker compose up -d --build
+
+# Ver logs en tiempo real de todos los servicios
+docker compose logs -f
+
+# Ver logs de un servicio específico
+docker logs sudosquad_laravel
+docker logs sudosquad_vite
+docker logs sudosquad_postgres
+
+# Entrar al contenedor de Laravel
+docker exec -it sudosquad_laravel sh
+
+# Entrar al contenedor de Vite
+docker exec -it sudosquad_vite sh
 ```
 
 ---
 
-**Puerto 5433 ocupado**
+## 18. Solución de errores comunes
 
-Windows PowerShell:
-```powershell
-netstat -ano | findstr :5433
-```
+**Error de conexión a PostgreSQL desde Laravel**
 
-Cambiar puerto en `docker-compose.yml`:
-```yaml
-ports:
-  - "5434:5432"
-```
-
-Y en `.env`:
+Verificar que el `.env` tenga:
 ```env
-DB_PORT=5434
+DB_HOST=sudosquad_db
+DB_PORT=5432
 ```
+No usar `127.0.0.1` ni `5433` — esos son para conexiones desde fuera de Docker.
 
 ---
 
 **pgAdmin no abre en localhost:5051**
 
-Verificar contenedores:
 ```bash
-docker ps
+docker ps | grep pgadmin
+docker logs sudosquad_pgadmin
 ```
 
-Si el puerto está ocupado, cambiar en `docker-compose.yml`:
+Si el volumen está corrupto:
+```bash
+docker compose down
+docker volume rm proyectos_academicos_sudosquad_pgadmin_data
+docker compose up -d
+```
+
+---
+
+**Laravel no responde en localhost:8000**
+
+```bash
+docker logs sudosquad_laravel
+```
+
+Si el servidor no arrancó:
+```bash
+docker compose down
+docker compose up -d
+```
+
+---
+
+**Vite no compila / wayfinder falla**
+
+```bash
+docker logs sudosquad_vite
+```
+
+Si hay error de PHP no encontrado, reconstruir la imagen de Vite:
+```bash
+docker compose up -d --build sudosquad_vite
+```
+
+---
+
+**Caché de Laravel desactualizada**
+
+```bash
+docker exec -it sudosquad_laravel php artisan optimize:clear
+```
+
+---
+
+**Puerto 5433 o 5051 ya ocupado**
+
+Cambiar el puerto externo en `docker-compose.yml`:
 ```yaml
 ports:
-  - "5052:80"
+  - "5434:5432"   # para postgres
+  - "5052:80"     # para pgadmin
 ```
 
-Luego abrir: [http://localhost:5052](http://localhost:5052)
+Y actualizar `.env` si cambiaste el puerto de postgres (solo aplica para conexiones externas, no desde Laravel).
 
 ---
 
-**Error de Vite / frontend no compila**
-
-```bash
-npm install
-npm run dev
-```
-
-Si persiste, eliminar `node_modules` y `package-lock.json`:
-
-Linux / macOS / Git Bash:
-```bash
-rm -rf node_modules package-lock.json
-npm install
-npm run dev
-```
-
-Windows: eliminar manualmente las carpetas y luego ejecutar `npm install`.
-
----
-
-**Error de caché de Laravel**
-
-```bash
-php artisan optimize:clear
-php artisan config:clear
-php artisan route:clear
-php artisan view:clear
-```
-
----
-
-## 20. Inicio rápido (todo de una vez)
-
-**Terminal 1:**
-```bash
-docker compose up -d
-php artisan optimize:clear
-php artisan serve
-```
-
-**Terminal 2:**
-```bash
-npm run dev
-```
-
----
-
-## 21. Archivos importantes
+## 19. Archivos importantes
 
 | Archivo / Carpeta | Descripción |
 |---|---|
-| `docker-compose.yml` | Configuración de PostgreSQL y pgAdmin |
+| `docker-compose.yml` | Configuración de los 4 contenedores |
+| `docker/laravel/Dockerfile` | Imagen PHP 8.4 + Composer para Laravel |
+| `docker/vite/Dockerfile` | Imagen Node 20 + PHP84 para Vite/wayfinder |
 | `init.sql` | Script inicial de base de datos |
 | `.env` | Variables locales del entorno |
 | `routes/web.php` | Rutas principales |
-| `routes/settings.php` | Rutas de configuración de usuario |
 | `app/Models/User.php` | Modelo de usuario |
 | `app/Http/Controllers/` | Controladores Laravel |
+| `app/Providers/FortifyServiceProvider.php` | Autenticación y seguridad |
 | `resources/js/pages/` | Vistas React + Inertia |
 | `resources/js/components/` | Componentes React reutilizables |
 
 ---
 
-## 22. Reglas del equipo
+## 20. Reglas del equipo
 
 - No subir `.env` ni `node_modules`.
 - No modificar `main` directamente — siempre trabajar en una rama.
 - Crear una rama por módulo o funcionalidad.
 - Hacer `git pull origin main` antes de empezar cualquier sesión.
-- Verificar que `php artisan serve` y `npm run dev` funcionen antes de hacer commit.
-- Avisar al equipo si se modifica `init.sql`, `docker-compose.yml`, rutas o autenticación.
+- Avisar al equipo si se modifica `init.sql`, `docker-compose.yml`, `Dockerfile`, rutas o autenticación.
 - Usar mensajes de commit claros y descriptivos en inglés.
 
 ---
 
+## Equipo — SudoSquad
+
+| Nombre | Rol |
+|---|---|
+| Fidel Eliseo Reyes Ramírez | Coach / Líder técnico |
+| Victor Santiago Albarracin Miranda | Frontend |
+| Adriano Leandro Daza Campero | Backend |
+| Erick Alan Paniagua Berrios | QA / Calidad |
 
 **Universidad Privada del Valle — Sede La Paz · 2026**
