@@ -1,6 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
 import { useState } from 'react';
-import InputError from '@/components/input-error';
 import TextLink from '@/components/text-link';
 import { register } from '@/routes';
 import { store } from '@/routes/login';
@@ -572,7 +571,7 @@ export default function Login({ status, canResetPassword, canRegister }: Props) 
                                                 {errors.email}
                                             </div>
                                         )}
-                                        <InputError message={errors.email} />
+                                       
                                     </div>
 
                                     {/* Contraseña */}
@@ -623,7 +622,7 @@ export default function Login({ status, canResetPassword, canRegister }: Props) 
                                                 {errors.password}
                                             </div>
                                         )}
-                                        <InputError message={errors.password} />
+                                        
                                     </div>
 
                                     {/* Recordarme */}
