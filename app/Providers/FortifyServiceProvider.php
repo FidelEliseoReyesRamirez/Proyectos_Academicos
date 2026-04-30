@@ -82,6 +82,14 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::verifyEmailView(function () {
             return Inertia::render('auth/verify-email');
         });
+
+        Fortify::confirmPasswordView(function () {
+            return Inertia::render('auth/confirm-password');
+        });
+
+        Fortify::twoFactorChallengeView(function () {
+            return Inertia::render('auth/two-factor-challenge');
+        });
     }
 
     private function configurarRateLimiter(): void
