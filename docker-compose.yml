@@ -1,9 +1,7 @@
-version: '3.9'
-
 services:
 
   # -------------------------------------------------------
-  # Base de datos PostgreSQL - SudoSquad Academic Platform
+  # Base de datos PostgreSQL
   # -------------------------------------------------------
   sudosquad_db:
     image: postgres:16-alpine
@@ -17,21 +15,19 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      # Persistencia de datos en volumen nombrado
       - sudosquad_pgdata:/var/lib/postgresql/data
-      # Script SQL que se ejecuta automáticamente al crear el contenedor por primera vez
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - sudosquad_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sudosquad_user -d sudosquad_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
 
   # -------------------------------------------------------
-  # pgAdmin - Interfaz gráfica para gestionar la base de datos
-  # Acceso: http://localhost:5050
+  # pgAdmin — http://localhost:5051
   # -------------------------------------------------------
   sudosquad_pgadmin:
     image: dpage/pgadmin4:latest
@@ -50,9 +46,75 @@ services:
     volumes:
       - sudosquad_pgadmin_data:/var/lib/pgadmin
 
+  # -------------------------------------------------------
+  # Laravel — http://localhost:8000
+  # -------------------------------------------------------
+  sudosquad_laravel:
+    build:
+      context: .
+      dockerfile: docker/laravel/Dockerfile
+    container_name: sudosquad_laravel
+    restart: unless-stopped
+    working_dir: /var/www/html
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/node_modules
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: pgsql
+      DB_HOST: sudosquad_db
+      DB_PORT: 5432
+      DB_DATABASE: sudosquad_db
+      DB_USERNAME: sudosquad_user
+      DB_PASSWORD: sudosquad_secret_2025
+    depends_on:
+      sudosquad_db:
+        condition: service_healthy
+    networks:
+      - sudosquad_net
+    command: >
+      sh -c "
+        composer install --no-interaction --prefer-dist &&
+        php artisan key:generate --no-interaction --force &&
+        php artisan optimize:clear &&
+        php artisan serve --host=0.0.0.0 --port=8000
+      "
+
+  # -------------------------------------------------------
+  # Vite / React — http://localhost:5173
+  # -------------------------------------------------------
+  sudosquad_vite:
+    build:
+      context: .
+      dockerfile: docker/vite/Dockerfile
+    container_name: sudosquad_vite
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - sudosquad_node_modules:/app/node_modules
+    depends_on:
+      - sudosquad_laravel
+    networks:
+      - sudosquad_net
+    command: >
+      sh -c "
+        git config --global --add safe.directory /var/www/html &&
+        composer install --no-interaction --prefer-dist &&
+        php artisan key:generate --no-interaction --force &&
+        php artisan optimize:clear &&
+        php artisan serve --host=0.0.0.0 --port=8000
+      "
+
 volumes:
   sudosquad_pgdata:
   sudosquad_pgadmin_data:
+  sudosquad_node_modules:
 
 networks:
   sudosquad_net:
