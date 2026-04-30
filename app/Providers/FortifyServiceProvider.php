@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Models\User;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -12,8 +14,8 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Laravel\Fortify\Fortify;
 use Inertia\Inertia;
+use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -27,9 +29,29 @@ class FortifyServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->configurarCorreoRecuperacionPassword();
         $this->configurarVistas();
         $this->configurarRateLimiter();
         $this->configurarAutenticacion();
+    }
+
+    private function configurarCorreoRecuperacionPassword(): void
+    {
+        ResetPassword::toMailUsing(function (object $notifiable, string $token) {
+            $url = url(route('password.reset', [
+                'token' => $token,
+                'email' => $notifiable->getEmailForPasswordReset(),
+            ], false));
+
+            return (new MailMessage)
+                ->subject('Restablecimiento de contraseña')
+                ->greeting('¡Hola!')
+                ->line('Recibiste este correo porque solicitaste restablecer la contraseña de tu cuenta.')
+                ->action('Restablecer contraseña', $url)
+                ->line('Este enlace de restablecimiento de contraseña expirará en 60 minutos.')
+                ->line('Si no solicitaste este cambio, no necesitas realizar ninguna acción.')
+                ->salutation('Saludos, Universidad Privada del Valle');
+        });
     }
 
     private function configurarVistas(): void
