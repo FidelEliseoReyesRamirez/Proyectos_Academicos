@@ -1,0 +1,59 @@
+version: '3.9'
+
+services:
+
+  # -------------------------------------------------------
+  # Base de datos PostgreSQL - SudoSquad Academic Platform
+  # -------------------------------------------------------
+  sudosquad_db:
+    image: postgres:16-alpine
+    container_name: sudosquad_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sudosquad_db
+      POSTGRES_USER: sudosquad_user
+      POSTGRES_PASSWORD: sudosquad_secret_2025
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      # Persistencia de datos en volumen nombrado
+      - sudosquad_pgdata:/var/lib/postgresql/data
+      # Script SQL que se ejecuta automáticamente al crear el contenedor por primera vez
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - sudosquad_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sudosquad_user -d sudosquad_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------
+  # pgAdmin - Interfaz gráfica para gestionar la base de datos
+  # Acceso: http://localhost:5050
+  # -------------------------------------------------------
+  sudosquad_pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sudosquad_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@sudosquad.dev
+      PGADMIN_DEFAULT_PASSWORD: admin_2025
+    ports:
+      - "5051:80"
+    depends_on:
+      sudosquad_db:
+        condition: service_healthy
+    networks:
+      - sudosquad_net
+    volumes:
+      - sudosquad_pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  sudosquad_pgdata:
+  sudosquad_pgadmin_data:
+
+networks:
+  sudosquad_net:
+    driver: bridge
