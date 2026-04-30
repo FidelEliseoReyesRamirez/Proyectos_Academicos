@@ -8,7 +8,7 @@ Sistema web académico para la gestión y seguimiento de proyectos estudiantiles
 
 | Capa | Tecnología |
 |---|---|
-| Backend | Laravel 12 |
+| Backend | Laravel 13 |
 | Frontend | React + Inertia.js + Vite |
 | Base de datos | PostgreSQL 16 (Docker) |
 | Administración BD | pgAdmin 4 (Docker) |
