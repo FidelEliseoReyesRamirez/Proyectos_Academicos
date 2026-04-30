@@ -1,0 +1,106 @@
+/* =====================================================
+   UNIVALLE La Paz — Sistema de colores SudoSquad
+   Paleta: Guindo, Dorado, Crema, Grises cálidos
+   ===================================================== */
+
+:root {
+  /* Guindo principal */
+  --guindo-900: #2E0812;
+  --guindo-800: #4A0D21;
+  --guindo-700: #5E1029;
+  --guindo-600: #6B1230;
+  --guindo-500: #7D1A3A;
+  --guindo-400: #9B2D50;
+  --guindo-300: #B85070;
+  --guindo-200: #D4849A;
+  --guindo-100: #EEC5CE;
+  --guindo-50:  #F9EDF0;
+
+  /* Dorado */
+  --gold-900: #5A3E0A;
+  --gold-800: #7A5510;
+  --gold-700: #9A6C18;
+  --gold-600: #B88A28;
+  --gold-500: #C9A84C;
+  --gold-400: #D6B96A;
+  --gold-300: #E2CA8A;
+  --gold-200: #EEDDB0;
+  --gold-100: #F6EEDC;
+  --gold-50:  #FBF7EE;
+
+  /* Grises cálidos */
+  --warm-950: #1A1614;
+  --warm-900: #242018;
+  --warm-800: #3A342C;
+  --warm-700: #524A40;
+  --warm-600: #6E6458;
+  --warm-500: #8A8074;
+  --warm-400: #A89E94;
+  --warm-300: #C4BEB6;
+  --warm-200: #DCD8D2;
+  --warm-100: #EEEBE6;
+  --warm-50:  #F5F3EF;
+  --warm-25:  #FAF8F5;
+
+  /* Semánticos — Modo Claro */
+  --bg-base:        var(--warm-25);
+  --bg-surface:     #FFFFFF;
+  --bg-subtle:      var(--warm-50);
+  --bg-muted:       var(--warm-100);
+
+  --text-primary:   var(--warm-950);
+  --text-secondary: var(--warm-700);
+  --text-muted:     var(--warm-500);
+  --text-on-guindo: #FFFFFF;
+  --text-on-gold:   var(--warm-950);
+
+  --border-subtle:  var(--warm-200);
+  --border-medium:  var(--warm-300);
+
+  --accent-primary: var(--guindo-600);
+  --accent-hover:   var(--guindo-800);
+  --accent-gold:    var(--gold-500);
+  --accent-gold-light: var(--gold-300);
+
+  /* Sombras */
+  --shadow-sm:   0 1px 3px rgba(26,22,20,0.06), 0 1px 2px rgba(26,22,20,0.04);
+  --shadow-md:   0 4px 12px rgba(26,22,20,0.08), 0 2px 6px rgba(26,22,20,0.04);
+  --shadow-lg:   0 8px 28px rgba(107,18,48,0.10), 0 4px 12px rgba(26,22,20,0.05);
+  --shadow-xl:   0 20px 48px rgba(107,18,48,0.12), 0 8px 20px rgba(26,22,20,0.06);
+
+  /* Navbar */
+  --nav-bg:      rgba(245,243,239,0.90);
+  --nav-border:  var(--warm-200);
+}
+
+/* =====================================================
+   MODO OSCURO
+   ===================================================== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-base:        #130A0E;
+    --bg-surface:     #1E1118;
+    --bg-subtle:      #251520;
+    --bg-muted:       #2F1C28;
+
+    --text-primary:   #F0EBE8;
+    --text-secondary: #C8BEB8;
+    --text-muted:     #8A7E78;
+
+    --border-subtle:  #3A2430;
+    --border-medium:  #4E3040;
+
+    --accent-primary: var(--guindo-400);
+    --accent-hover:   var(--guindo-300);
+    --accent-gold:    var(--gold-400);
+    --accent-gold-light: var(--gold-200);
+
+    --shadow-sm:  0 1px 3px rgba(0,0,0,0.30);
+    --shadow-md:  0 4px 12px rgba(0,0,0,0.35);
+    --shadow-lg:  0 8px 28px rgba(0,0,0,0.40);
+    --shadow-xl:  0 20px 48px rgba(0,0,0,0.50);
+
+    --nav-bg:     rgba(19,10,14,0.92);
+    --nav-border: #3A2430;
+  }
+}

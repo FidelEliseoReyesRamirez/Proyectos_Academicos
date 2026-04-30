@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Monitor, Moon, Sun } from 'lucide-react';
 import type { HTMLAttributes } from 'react';
+
 import type { Appearance } from '@/hooks/use-appearance';
 import { useAppearance } from '@/hooks/use-appearance';
 import { cn } from '@/lib/utils';
@@ -20,26 +21,51 @@ export default function AppearanceToggleTab({
     return (
         <div
             className={cn(
-                'inline-flex gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800',
+                'appearance-tabs inline-flex gap-1 rounded-lg border p-1',
                 className,
             )}
+            style={{
+                backgroundColor: 'var(--bg-subtle)',
+                borderColor: 'var(--border-subtle)',
+                boxShadow: 'var(--shadow-sm)',
+            }}
             {...props}
         >
-            {tabs.map(({ value, icon: Icon, label }) => (
-                <button
-                    key={value}
-                    onClick={() => updateAppearance(value)}
-                    className={cn(
-                        'flex items-center rounded-md px-3.5 py-1.5 transition-colors',
-                        appearance === value
-                            ? 'bg-white shadow-xs dark:bg-neutral-700 dark:text-neutral-100'
-                            : 'text-neutral-500 hover:bg-neutral-200/60 hover:text-black dark:text-neutral-400 dark:hover:bg-neutral-700/60',
-                    )}
-                >
-                    <Icon className="-ml-1 h-4 w-4" />
-                    <span className="ml-1.5 text-sm">{label}</span>
-                </button>
-            ))}
+            {tabs.map(({ value, icon: Icon, label }) => {
+                const isActive = appearance === value;
+
+                return (
+                    <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateAppearance(value)}
+                        className={cn(
+                            'flex items-center rounded-md px-3.5 py-1.5 transition-colors',
+                        )}
+                        style={{
+                            backgroundColor: isActive
+                                ? 'var(--bg-surface)'
+                                : 'transparent',
+                            color: isActive
+                                ? 'var(--accent-primary)'
+                                : 'var(--text-muted)',
+                            boxShadow: isActive
+                                ? 'var(--shadow-sm)'
+                                : 'none',
+                        }}
+                    >
+                        <Icon
+                            className="-ml-1 h-4 w-4"
+                            style={{
+                                color: isActive
+                                    ? 'var(--accent-gold)'
+                                    : 'currentColor',
+                            }}
+                        />
+                        <span className="ml-1.5 text-sm">{label}</span>
+                    </button>
+                );
+            })}
         </div>
     );
 }
