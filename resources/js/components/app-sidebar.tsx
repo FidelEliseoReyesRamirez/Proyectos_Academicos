@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
+import { FolderKanban } from 'lucide-react';
 
 type AuthUser = {
     id?: number;
@@ -48,7 +49,13 @@ export function AppSidebar() {
             title: 'Usuarios',
             href: '/usuarios',
             icon: UsersRound,
-        });
+        },
+        {
+            title: 'Proyectos',
+            href: '/proyectos',
+            icon: FolderKanban,
+        }
+        );
     }
 
     return (

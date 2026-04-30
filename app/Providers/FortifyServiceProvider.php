@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
+use App\Actions\Fortify\CreateNewUser;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -33,6 +34,7 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configurarVistas();
         $this->configurarRateLimiter();
         $this->configurarAutenticacion();
+        Fortify::createUsersUsing(CreateNewUser::class);
     }
 
     private function configurarCorreoRecuperacionPassword(): void
