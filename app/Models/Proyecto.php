@@ -19,7 +19,9 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 class Proyecto extends Model
 {
     protected $table = 'proyectos';
-
+    protected $casts = [
+        'estado' => 'string',
+    ];
     protected function casts(): array
     {
         return [

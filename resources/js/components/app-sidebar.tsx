@@ -54,6 +54,11 @@ export function AppSidebar() {
             title: 'Proyectos',
             href: '/proyectos',
             icon: FolderKanban,
+        },
+        {
+            title: 'Periodos',
+            href: '/periodos',
+            icon: FolderKanban,
         }
         );
     }

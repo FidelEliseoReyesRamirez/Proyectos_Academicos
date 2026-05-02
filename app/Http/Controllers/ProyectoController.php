@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use Carbon\Carbon;
 
 class ProyectoController extends Controller
 {
@@ -62,10 +63,17 @@ class ProyectoController extends Controller
     {
         return Inertia::render('proyectos/create', [
             'periodos' => PeriodoAcademico::select('id', 'nombre')->get(),
-            'estudiantes' => User::where('rol', '=', 'estudiante', 'and')->select(['id', 'name'])->get(),
-            'tutores' => User::where('rol', '=', 'tutor', 'and')->select(['id', 'name'])->get(),
+
+            'estudiantes' => User::where('rol', '=', 'estudiante', 'and')
+                ->select(['id', 'name'])
+                ->get(),
+
+            'tutores' => User::where('rol', '=', 'tutor', 'and')
+                ->select(['id', 'name'])
+                ->get(),
         ]);
     }
+
 
     public function store(Request $request): RedirectResponse
     {
@@ -73,20 +81,40 @@ class ProyectoController extends Controller
             'codigo' => ['required', 'string', 'max:50'],
             'titulo' => ['required', 'string', 'max:255'],
             'descripcion' => ['nullable', 'string'],
-            'estado' => ['required', 'string'],
+
+            'modalidad' => ['required', 'string'],
+            'area_tematica' => ['required', 'string'],
+
             'periodo_id' => ['required', 'exists:periodos_academicos,id'],
             'estudiante_id' => ['required', 'exists:users,id'],
             'tutor_id' => ['required', 'exists:users,id'],
         ]);
 
-        // 🔥 VALIDACIÓN DE FECHAS DEL PERIODO
-        $periodo = PeriodoAcademico::findOrFail($validated['periodo_id']);
+        $periodoActivo = PeriodoAcademico::where('activo', '=', true, 'and')->first();
 
-        if (now()->lt($periodo->fecha_inicio) || now()->gt($periodo->fecha_fin)) {
+        if (!$periodoActivo) {
             return back()->withErrors([
-                'periodo_id' => 'No se pueden registrar proyectos fuera del periodo activo.',
+                'periodo_id' => 'No hay un periodo académico activo.',
             ]);
         }
+
+        if ($validated['periodo_id'] != $periodoActivo->id) {
+            return back()->withErrors([
+                'periodo_id' => 'Solo puedes registrar proyectos en el periodo activo.',
+            ]);
+        }
+
+        if (!Carbon::today()->between(
+            Carbon::parse($periodoActivo->fecha_inicio),
+            Carbon::parse($periodoActivo->fecha_cierre)
+        )) {
+            return back()->withErrors([
+                'periodo_id' => 'El periodo activo está fuera de fecha.',
+            ]);
+        }
+
+        // 🔥 ESTADO AUTOMÁTICO CORRECTO
+        $validated['estado'] = 'en_revision';
 
         Proyecto::create($validated);
 
@@ -98,11 +126,11 @@ class ProyectoController extends Controller
 
     public function edit(Proyecto $proyecto): Response
     {
-        return Inertia::render('proyectos/edit', [
-            'proyecto' => $proyecto->load(['periodo', 'estudiante', 'tutor']),
-            'periodos' => PeriodoAcademico::select(['id', 'nombre'])->get(),
-            'estudiantes' => User::where('rol', '=', 'estudiante', 'and')->select(['id', 'name'])->get(),
-            'tutores' => User::where('rol', '=', 'tutor', 'and')->select(['id', 'name'])->get(),
+        return Inertia::render('Proyectos/Edit', [
+            'proyecto' => $proyecto,
+            'periodos' => PeriodoAcademico::all(),
+            'estudiantes' => User::where('rol', '=', 'estudiante', 'and')->get(),
+            'tutores' => User::where('rol', '=', 'tutor', 'and')->get(),
         ]);
     }
 
@@ -113,6 +141,10 @@ class ProyectoController extends Controller
             'titulo' => ['required', 'string', 'max:255'],
             'descripcion' => ['nullable', 'string'],
             'estado' => ['required', 'string'],
+
+            'modalidad' => ['required', 'string'],
+            'area_tematica' => ['required', 'string'],
+
             'periodo_id' => ['required', 'exists:periodos_academicos,id'],
             'estudiante_id' => ['required', 'exists:users,id'],
             'tutor_id' => ['required', 'exists:users,id'],

@@ -3,7 +3,7 @@
 use App\Http\Controllers\UsuariosController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
-use App\Http\Controllers\PeriodosAcademicosController;
+use App\Http\Controllers\PeriodoAcademicoController;
 use App\Http\Controllers\ProyectoController;
 
 Route::inertia('/', 'welcome', [
@@ -26,15 +26,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('usuarios/{user}/estado', [UsuariosController::class, 'updateEstado'])->name('usuarios.estado');
 
         //Periodos
-        Route::get('periodos', [PeriodosAcademicosController::class, 'index'])->name('periodos.index');
-        Route::get('periodos/crear', [PeriodosAcademicosController::class, 'create'])->name('periodos.create');
-        Route::post('periodos', [PeriodosAcademicosController::class, 'store'])->name('periodos.store');
+        Route::get('periodos', [PeriodoAcademicoController::class, 'index'])->name('periodos.index');
+        Route::get('periodos/crear', [PeriodoAcademicoController::class, 'create'])->name('periodos.create');
+        Route::post('periodos', [PeriodoAcademicoController::class, 'store'])->name('periodos.store');
+        Route::get('periodos/{periodo}/editar', [PeriodoAcademicoController::class, 'edit'])->name('periodos.edit');
+        Route::put('periodos/{periodo}', [PeriodoAcademicoController::class, 'update'])->name('periodos.update');
 
         //Proyectos
         Route::get('proyectos', [ProyectoController::class, 'index'])->name('proyectos.index');
-        Route::get('proyectos/crear', [ProyectoController::class, 'create'])->name('proyectos.create');
+        Route::get('proyectos/create', [ProyectoController::class, 'create'])->name('proyectos.create');
         Route::post('proyectos', [ProyectoController::class, 'store'])->name('proyectos.store');
-        Route::get('proyectos/{proyecto}/editar', [ProyectoController::class, 'edit'])->name('proyectos.edit');
+        Route::get('proyectos/{proyecto}/edit', [ProyectoController::class, 'edit'])->name('proyectos.edit');
         Route::put('proyectos/{proyecto}', [ProyectoController::class, 'update'])->name('proyectos.update');
     });
 });
