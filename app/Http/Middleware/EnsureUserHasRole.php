@@ -20,11 +20,15 @@ class EnsureUserHasRole
         $user = $request->user();
 
         if (! $user) {
-            abort(401);
+            return redirect()
+                ->route('login')
+                ->with('error', 'Debes iniciar sesión para acceder a esta sección.');
         }
 
         if (! in_array($user->rol, $roles, true)) {
-            abort(403, 'No tienes permisos para acceder a esta sección.');
+            return redirect()
+                ->to('/')
+                ->with('error', 'No tienes permisos para acceder a esta sección.');
         }
 
         return $next($request);
