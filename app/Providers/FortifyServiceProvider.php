@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Actions\Fortify\CreateNewUser;
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -15,7 +16,6 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
-use App\Actions\Fortify\CreateNewUser;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -28,17 +28,15 @@ class FortifyServiceProvider extends ServiceProvider
         //
     }
 
-   public function boot(): void
-{
-    // Agrega estas líneas al inicio del boot
-    Fortify::createUsersUsing(CreateNewUser::class);
+    public function boot(): void
+    {
+        Fortify::createUsersUsing(CreateNewUser::class);
 
-    // ... el resto que ya tienes
-    $this->configurarCorreoRecuperacionPassword();
-    $this->configurarVistas();
-    $this->configurarRateLimiter();
-    $this->configurarAutenticacion();
-}
+        $this->configurarCorreoRecuperacionPassword();
+        $this->configurarVistas();
+        $this->configurarRateLimiter();
+        $this->configurarAutenticacion();
+    }
 
     private function configurarCorreoRecuperacionPassword(): void
     {
