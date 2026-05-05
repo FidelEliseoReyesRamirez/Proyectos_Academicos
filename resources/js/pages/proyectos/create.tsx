@@ -231,12 +231,12 @@ export default function ProyectosCreate({ periodos, estudiantes, tutores }: Prop
                             <div>
                                 <label className="field-label"><Tag className="h-3 w-3" /> Código</label>
                                 <Input
-                                    className="field-input font-mono"
-                                    value={form.data.codigo}
-                                    onChange={e => form.setData('codigo', e.target.value)}
-                                    placeholder="PRY-001"
+                                    className="field-input font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed"
+                                    value="Generado automáticamente"
+                                    disabled
+                                    readOnly
                                 />
-                                {form.errors.codigo && <div className="error-text">{form.errors.codigo}</div>}
+                                <div className="text-[0.75rem] text-gray-500 mt-1">El sistema asignará el código al guardar.</div>
                             </div>
 
                             {/* Título */}

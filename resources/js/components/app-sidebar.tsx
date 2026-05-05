@@ -35,14 +35,22 @@ export function AppSidebar() {
 
     const user = page.props.auth?.user;
     const userRole = String(user?.rol ?? user?.role ?? '').toLowerCase();
+    
 
+    // 1. Elementos base para TODOS los roles (Estudiantes, Tutores, Coordinadores)
     const mainNavItems: NavItem[] = [
         {
             title: 'Dashboard',
             href: dashboard(),
             icon: LayoutGrid,
         },
+        {
+            title: 'Proyectos',
+            href: '/proyectos',
+            icon: FolderKanban,
+        },
     ];
+
 
     if (userRole === 'coordinador') {
         mainNavItems.push({

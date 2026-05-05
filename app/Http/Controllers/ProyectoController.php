@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Proyecto;
 use App\Models\User;
 use App\Models\PeriodoAcademico;
+use App\Mail\ProyectoRegistrado;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -77,14 +79,12 @@ class ProyectoController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        // CA 1: Validación de campos obligatorios (Quitamos 'codigo' de aquí)
         $validated = $request->validate([
-            'codigo' => ['required', 'string', 'max:50'],
             'titulo' => ['required', 'string', 'max:255'],
             'descripcion' => ['nullable', 'string'],
-
             'modalidad' => ['required', 'string'],
             'area_tematica' => ['required', 'string'],
-
             'periodo_id' => ['required', 'exists:periodos_academicos,id'],
             'estudiante_id' => ['required', 'exists:users,id'],
             'tutor_id' => ['required', 'exists:users,id'],
@@ -93,34 +93,42 @@ class ProyectoController extends Controller
         $periodoActivo = PeriodoAcademico::where('activo', '=', true, 'and')->first();
 
         if (!$periodoActivo) {
-            return back()->withErrors([
-                'periodo_id' => 'No hay un periodo académico activo.',
-            ]);
+            return back()->withErrors(['periodo_id' => 'No hay un periodo académico activo.']);
         }
 
         if ($validated['periodo_id'] != $periodoActivo->id) {
-            return back()->withErrors([
-                'periodo_id' => 'Solo puedes registrar proyectos en el periodo activo.',
-            ]);
+            return back()->withErrors(['periodo_id' => 'Solo puedes registrar proyectos en el periodo activo.']);
         }
 
         if (!Carbon::today()->between(
             Carbon::parse($periodoActivo->fecha_inicio),
             Carbon::parse($periodoActivo->fecha_cierre)
         )) {
-            return back()->withErrors([
-                'periodo_id' => 'El periodo activo está fuera de fecha.',
-            ]);
+            return back()->withErrors(['periodo_id' => 'El periodo activo está fuera de fecha.']);
         }
 
-        // 🔥 ESTADO AUTOMÁTICO CORRECTO
+        // Si el usuario autenticado es un estudiante, forzamos que el proyecto sea suyo
+        // para evitar que registre proyectos a nombre de otros.
+        if (auth()->user()->rol === 'estudiante') {
+            $validated['estudiante_id'] = auth()->id();
+        }
+
+        // CA 2: Generación automática de código único
+        $validated['codigo'] = 'PROY-' . Carbon::now()->format('Y') . '-' . strtoupper(\Illuminate\Support\Str::random(5));
+        
+        // ESTADO AUTOMÁTICO CORRECTO
         $validated['estado'] = 'en_revision';
 
-        Proyecto::create($validated);
+        // Persistencia
+        $proyecto = Proyecto::create($validated);
+
+        // CA 3: El estudiante recibe una confirmación
+        $estudiante = User::find($validated['estudiante_id']);
+        Mail::to($estudiante->email)->send(new ProyectoRegistrado($proyecto));
 
         return to_route('proyectos.index')->with('toast', [
             'type' => 'success',
-            'message' => 'Proyecto creado correctamente.',
+            'message' => 'Proyecto creado correctamente con el código ' . $proyecto->codigo,
         ]);
     }
 
