@@ -50,27 +50,30 @@ export function AppSidebar() {
             icon: FolderKanban,
         },
     ];
-
-
+    
+    // 2. Elementos exclusivos SOLO para el coordinador
     if (userRole === 'coordinador') {
-        mainNavItems.push({
-            title: 'Usuarios',
-            href: '/usuarios',
-            icon: UsersRound,
-        },
-        {
+        mainNavItems.push(
+            {
+                title: 'Usuarios',
+                href: '/usuarios',
+                icon: UsersRound,
+            },
+            {
             title: 'Proyectos',
             href: '/proyectos',
             icon: FolderKanban,
-        },
-        {
-            title: 'Periodos',
-            href: '/periodos',
-            icon: FolderKanban,
-        }
+            },
+            {
+                title: 'Periodos',
+                href: '/periodos',
+                // Sugerencia: Puedes cambiar este ícono para que no sea igual al de proyectos
+                // import { Calendar } from 'lucide-react';
+                icon: FolderKanban, 
+            }
         );
     }
-
+    
     return (
         <Sidebar
             collapsible="icon"
