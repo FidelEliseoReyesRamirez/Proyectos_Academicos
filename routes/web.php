@@ -39,5 +39,4 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('periodos/{periodo}', [PeriodoAcademicoController::class, 'update'])->name('periodos.update');
     });
 });
-
 require __DIR__ . '/settings.php';
