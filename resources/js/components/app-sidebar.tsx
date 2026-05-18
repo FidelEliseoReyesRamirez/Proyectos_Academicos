@@ -44,11 +44,6 @@ export function AppSidebar() {
             href: dashboard(),
             icon: LayoutGrid,
         },
-        {
-            title: 'Proyectos',
-            href: '/proyectos',
-            icon: FolderKanban,
-        },
     ];
     
     // 2. Elementos exclusivos SOLO para el coordinador
@@ -238,7 +233,7 @@ export function AppSidebar() {
                                             Univalle
                                         </div>
                                         <div className="univalle-brand-subtitle">
-                                            Plataforma Académica
+                                            Plataforma TEST
                                         </div>
                                     </div>
                                 </div>
