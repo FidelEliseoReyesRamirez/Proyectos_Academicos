@@ -10,28 +10,52 @@ export default defineConfig({
     server: {
         host: '0.0.0.0',
         port: 5173,
+        strictPort: true,
+
         hmr: {
+            protocol: 'ws',
             host: 'localhost',
-            port: 5173,
+            clientPort: 5173,
+        },
+
+        watch: {
+            usePolling: true,
+            interval: 500,
+            ignored: [
+                '**/.git/**',
+                '**/.env',
+                '**/.env.*',
+                '**/vendor/**',
+                '**/storage/**',
+                '**/bootstrap/cache/**',
+                '**/node_modules/**',
+                '**/public/build/**',
+                '**/public/hot',
+            ],
         },
     },
+
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],
-            refresh: true,
+            refresh: [
+                'app/**/*.php',
+                'routes/**/*.php',
+                'resources/views/**/*.php',
+            ],
             fonts: [
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],
                 }),
             ],
         }),
+
         inertia(),
-        react({
-            babel: {
-                plugins: ['babel-plugin-react-compiler'],
-            },
-        }),
+
+        react(),
+
         tailwindcss(),
+
         wayfinder({
             formVariants: true,
             command: '/usr/bin/php84 artisan wayfinder:generate --with-form',

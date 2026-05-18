@@ -233,7 +233,7 @@ export function AppSidebar() {
                                             Univalle
                                         </div>
                                         <div className="univalle-brand-subtitle">
-                                            Plataforma TEST
+                                            Plataforma Univalle
                                         </div>
                                     </div>
                                 </div>
