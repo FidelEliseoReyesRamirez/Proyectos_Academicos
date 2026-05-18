@@ -5,8 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Proyecto;
 use App\Models\User;
 use App\Models\PeriodoAcademico;
-use App\Mail\ProyectoRegistrado;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -107,24 +106,21 @@ class ProyectoController extends Controller
             return back()->withErrors(['periodo_id' => 'El periodo activo está fuera de fecha.']);
         }
 
-        // Si el usuario autenticado es un estudiante, forzamos que el proyecto sea suyo
-        // para evitar que registre proyectos a nombre de otros.
-        if (auth()->user()->rol === 'estudiante') {
-            $validated['estudiante_id'] = auth()->id();
+
+        $usuarioAutenticado = Auth::user();
+
+        if ($usuarioAutenticado instanceof User && $usuarioAutenticado->getAttribute('rol') === 'estudiante') {
+            $validated['estudiante_id'] = $usuarioAutenticado->getKey();
         }
 
         // CA 2: Generación automática de código único
         $validated['codigo'] = 'PROY-' . Carbon::now()->format('Y') . '-' . strtoupper(\Illuminate\Support\Str::random(5));
-        
+
         // ESTADO AUTOMÁTICO CORRECTO
         $validated['estado'] = 'en_revision';
 
         // Persistencia
         $proyecto = Proyecto::create($validated);
-
-        // CA 3: El estudiante recibe una confirmación
-        $estudiante = User::find($validated['estudiante_id']);
-        Mail::to($estudiante->email)->send(new ProyectoRegistrado($proyecto));
 
         return to_route('proyectos.index')->with('toast', [
             'type' => 'success',

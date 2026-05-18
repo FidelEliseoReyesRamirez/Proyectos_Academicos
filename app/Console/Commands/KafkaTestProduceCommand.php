@@ -7,29 +7,33 @@ use Illuminate\Console\Command;
 
 class KafkaTestProduceCommand extends Command
 {
-    protected $signature = 'kafka:test-produce';
+    protected $signature = 'kafka:test-produce {--id=1}';
 
     protected $description = 'Publica un evento de prueba en Kafka';
 
-    public function handle(KafkaProducerService $kafka): int
+    public function handle(KafkaProducerService $producer): int
     {
+        $projectId = (int) $this->option('id');
+
         $payload = [
-            'evento' => 'proyecto.registrado',
-            'proyecto_id' => 999,
-            'codigo' => 'PROY-KAFKA-TEST',
-            'titulo' => 'Prueba Laravel hacia Kafka',
-            'estado' => 'en_revision',
-            'origen' => 'laravel',
-            'fecha_evento' => now()->toISOString(),
+            'event' => 'proyecto.registrado',
+            'version' => 1,
+            'occurred_at' => now()->toISOString(),
+            'data' => [
+                'id' => $projectId,
+                'nombre' => 'Proyecto de prueba Kafka',
+                'origen' => 'laravel',
+            ],
         ];
 
-        $kafka->publish(
-            topicName: 'proyecto.registrado',
-            payload: $payload,
-            key: 'proyecto-999',
+        $producer->publish(
+            config('kafka.topics.proyecto_registrado'),
+            $payload,
+            (string) $projectId
         );
 
-        $this->info('Evento publicado correctamente en Kafka.');
+        $this->info('Evento publicado en Kafka.');
+        $this->line(json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 
         return self::SUCCESS;
     }

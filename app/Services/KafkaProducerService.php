@@ -2,53 +2,40 @@
 
 namespace App\Services;
 
+use RuntimeException;
 use RdKafka\Conf;
 use RdKafka\Producer;
-use RuntimeException;
 
 class KafkaProducerService
 {
-    private Producer $producer;
-
-    public function __construct()
+    public function publish(string $topic, array $payload, ?string $key = null): void
     {
-        $brokers = env('KAFKA_BROKERS', 'sudosquad_kafka:9092');
-
         $conf = new Conf();
-        $conf->set('metadata.broker.list', $brokers);
-        $conf->set('socket.timeout.ms', '10000');
-        $conf->set('message.timeout.ms', '10000');
 
-        $this->producer = new Producer($conf);
-        $this->producer->addBrokers($brokers);
-    }
+        $conf->set('bootstrap.servers', config('kafka.brokers'));
+        $conf->set('client.id', config('kafka.client_id'));
 
-    public function publish(string $topicName, array $payload, ?string $key = null): void
-    {
-        $topic = $this->producer->newTopic($topicName);
+        $producer = new Producer($conf);
 
-        $message = json_encode(
-            $payload,
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
-        );
+        $message = json_encode($payload, JSON_THROW_ON_ERROR);
 
-        if ($message === false) {
-            throw new RuntimeException('No se pudo convertir el evento Kafka a JSON.');
-        }
+        $producerTopic = $producer->newTopic($topic);
 
-        $topic->produce(
+        $producerTopic->produce(
             \RD_KAFKA_PARTITION_UA,
             0,
             $message,
-            $key,
+            $key
         );
 
-        $this->producer->poll(0);
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $result = $producer->flush(1000);
 
-        $result = $this->producer->flush(10000);
-
-        if ($result !== \RD_KAFKA_RESP_ERR_NO_ERROR) {
-            throw new RuntimeException('No se pudo publicar el evento en Kafka.');
+            if ($result === \RD_KAFKA_RESP_ERR_NO_ERROR) {
+                return;
+            }
         }
+
+        throw new RuntimeException('No se pudo publicar el evento en Kafka.');
     }
 }
