@@ -4,21 +4,20 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable([
-    'codigo',
-    'titulo',
-    'descripcion',
-    'modalidad',
-    'area_tematica',
-    'estado',
-    'estudiante_id',
-    'tutor_id',
-    'periodo_id',
-])]
+
 class Proyecto extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'proyectos';
+
+    protected $fillable = [
+        'codigo', 'titulo', 'descripcion', 'modalidad', 'area_tematica',
+        'estado', 'estudiante_id', 'tutor_id', 'periodo_id',
+    ];
     protected $casts = [
         'estado' => 'string',
     ];

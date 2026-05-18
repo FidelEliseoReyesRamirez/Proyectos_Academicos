@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('proyectos')) {
+            return;
+        }
+
         Schema::create('proyectos', function (Blueprint $table) {
             $table->id();
             $table->string('codigo')->unique();
@@ -16,10 +20,17 @@ return new class extends Migration
             $table->string('modalidad');
             $table->string('area_tematica');
             $table->string('estado')->default('en_revision');
-            $table->foreignId('estudiante_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('tutor_id')->constrained('users');
-            $table->foreignId('periodo_id')->constrained('periodos_academicos');
-            
+
+            $table->foreignId('estudiante_id')
+                ->constrained('users')
+                ->onDelete('cascade');
+
+            $table->foreignId('tutor_id')
+                ->constrained('users');
+
+            $table->foreignId('periodo_id')
+                ->constrained('periodos_academicos');
+
             $table->timestamps();
         });
     }
