@@ -119,6 +119,8 @@ services:
       KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
       KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
+      KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
+      KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
     depends_on:
       sudosquad_db:
         condition: service_healthy
@@ -157,6 +159,8 @@ services:
       KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
       KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
+      KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
+      KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
     depends_on:
       sudosquad_kafka:
         condition: service_healthy
@@ -179,6 +183,8 @@ services:
       KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
       KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
+      KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
+      KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
     depends_on:
       sudosquad_kafka:
         condition: service_healthy
