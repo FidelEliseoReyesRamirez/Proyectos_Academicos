@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\KafkaProducerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -11,6 +12,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class UsuariosController extends Controller
 {
@@ -126,7 +128,7 @@ class UsuariosController extends Controller
             ],
         ]);
 
-        User::create([
+        $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'telefono_contacto' => $validated['telefono_contacto'] ?? null,
@@ -137,6 +139,8 @@ class UsuariosController extends Controller
             'bloqueado_hasta' => null,
             'email_verified_at' => now(),
         ]);
+
+        $this->publicarEventoUsuario('usuario.creado', $user);
 
         return to_route('usuarios.index')->with('toast', [
             'type' => 'success',
@@ -198,6 +202,15 @@ class UsuariosController extends Controller
             ]);
         }
 
+        $valoresAnteriores = [
+            'name' => $user->name,
+            'telefono_contacto' => $user->telefono_contacto,
+            'rol' => $user->rol,
+            'activo' => (bool) $user->activo,
+        ];
+
+        $passwordActualizada = ! empty($validated['password']);
+
         $user->forceFill([
             'name' => $validated['name'],
             'telefono_contacto' => $validated['telefono_contacto'] ?? null,
@@ -205,13 +218,50 @@ class UsuariosController extends Controller
             'activo' => $validated['activo'],
         ]);
 
-        if (! empty($validated['password'])) {
+        if ($passwordActualizada) {
             $user->password = Hash::make($validated['password']);
             $user->intentos_fallidos = 0;
             $user->bloqueado_hasta = null;
         }
 
         $user->save();
+        $user->refresh();
+
+        $cambios = [];
+
+        foreach ($valoresAnteriores as $campo => $valorAnterior) {
+            $valorNuevo = $campo === 'activo'
+                ? (bool) $user->{$campo}
+                : $user->{$campo};
+
+            if ($valorAnterior !== $valorNuevo) {
+                $cambios[$campo] = [
+                    'anterior' => $valorAnterior,
+                    'nuevo' => $valorNuevo,
+                ];
+            }
+        }
+
+        if ($cambios !== []) {
+            $this->publicarEventoUsuario('usuario.actualizado', $user, [
+                'cambios' => $cambios,
+            ]);
+        }
+
+        if (array_key_exists('activo', $cambios)) {
+            $this->publicarEventoUsuario(
+                $user->activo ? 'usuario.restaurado' : 'usuario.desactivado',
+                $user,
+                [
+                    'estado_anterior' => $valoresAnteriores['activo'],
+                    'estado_nuevo' => (bool) $user->activo,
+                ]
+            );
+        }
+
+        if ($passwordActualizada) {
+            $this->publicarEventoUsuario('usuario.password_actualizada', $user);
+        }
 
         return to_route('usuarios.index')->with('toast', [
             'type' => 'success',
@@ -231,9 +281,24 @@ class UsuariosController extends Controller
             ]);
         }
 
+        $estadoAnterior = (bool) $user->activo;
+
         $user->forceFill([
             'activo' => $validated['activo'],
         ])->save();
+
+        $user->refresh();
+
+        if ($estadoAnterior !== (bool) $user->activo) {
+            $this->publicarEventoUsuario(
+                $user->activo ? 'usuario.restaurado' : 'usuario.desactivado',
+                $user,
+                [
+                    'estado_anterior' => $estadoAnterior,
+                    'estado_nuevo' => (bool) $user->activo,
+                ]
+            );
+        }
 
         return back()->with('toast', [
             'type' => 'success',
@@ -241,6 +306,52 @@ class UsuariosController extends Controller
                 ? 'Usuario restaurado correctamente.'
                 : 'Usuario enviado a papelera correctamente.',
         ]);
+    }
+
+    private function publicarEventoUsuario(string $evento, User $user, array $datosAdicionales = []): void
+    {
+        try {
+            app(KafkaProducerService::class)->publish(
+                config('kafka.topics.usuarios_eventos'),
+                [
+                    'event' => $evento,
+                    'version' => 1,
+                    'occurred_at' => now()->toISOString(),
+                    'producer' => [
+                        'service' => 'proyectos-academicos-monolith',
+                        'module' => 'usuarios',
+                    ],
+                    'data' => array_merge([
+                        'id' => (int) $user->id,
+                        'nombre' => $user->name,
+                        'email' => $user->email,
+                        'rol' => $user->rol,
+                        'activo' => (bool) $user->activo,
+                        'telefono_contacto' => $user->telefono_contacto,
+                        'usuario_accion' => $this->usuarioEvento(),
+                    ], $datosAdicionales),
+                ],
+                (string) $user->id
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function usuarioEvento(): ?array
+    {
+        $usuario = Auth::user();
+
+        if (! $usuario) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $usuario->id,
+            'nombre' => $usuario->name,
+            'email' => $usuario->email,
+            'rol' => $usuario->rol,
+        ];
     }
 
     private function esUltimoCoordinador(User $user): bool

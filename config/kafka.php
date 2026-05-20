@@ -32,5 +32,15 @@ return [
             'KAFKA_TOPIC_PROYECTO_RESTAURADO',
             'proyectos.restaurados'
         ),
+
+        'usuarios_eventos' => env(
+            'KAFKA_TOPIC_USUARIOS_EVENTOS',
+            'usuarios.eventos'
+        ),
+
+        'auth_eventos' => env(
+            'KAFKA_TOPIC_AUTH_EVENTOS',
+            'auth.eventos'
+        ),
     ],
 ];
