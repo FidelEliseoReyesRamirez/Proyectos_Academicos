@@ -136,51 +136,24 @@ services:
       "
 
   # -------------------------------------------------------
-  # Microservicio consumidor Kafka
+  # Microservicio real de notificaciones
   # -------------------------------------------------------
-  sudosquad_kafka_consumer:
+  sudosquad_notificaciones:
     build:
-      context: .
-      dockerfile: docker/laravel/Dockerfile
-    container_name: sudosquad_kafka_consumer
+      context: ./services/notificaciones-service
+      dockerfile: Dockerfile
+    container_name: sudosquad_notificaciones
     restart: unless-stopped
-    working_dir: /var/www/html
-    volumes:
-      - .:/var/www/html
     environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      APP_URL: http://localhost:8000
-
-      DB_CONNECTION: pgsql
-      DB_HOST: sudosquad_db
-      DB_PORT: 5432
-      DB_DATABASE: sudosquad_db
-      DB_USERNAME: sudosquad_user
-      DB_PASSWORD: sudosquad_secret_2025
-
       KAFKA_BROKERS: sudosquad_kafka:19092
-      KAFKA_CLIENT_ID: sudosquad-kafka-consumer
-      KAFKA_GROUP_ID: sudosquad-notifications
+      KAFKA_CLIENT_ID: sudosquad-notificaciones
+      KAFKA_GROUP_ID: sudosquad-notificaciones-service
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
     depends_on:
-      sudosquad_db:
-        condition: service_healthy
       sudosquad_kafka:
         condition: service_healthy
-      sudosquad_laravel:
-        condition: service_started
     networks:
       - sudosquad_net
-    command: >
-      sh -c "
-        while [ ! -f vendor/autoload.php ]; do
-          echo 'Esperando composer install de Laravel...';
-          sleep 2;
-        done &&
-        php artisan config:clear &&
-        php artisan kafka:consume-proyectos
-      "
 
   # -------------------------------------------------------
   # Vite / React — http://localhost:5173
