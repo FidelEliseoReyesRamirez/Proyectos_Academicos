@@ -13,6 +13,12 @@ $topicProyectoRestaurado = getenv('KAFKA_TOPIC_PROYECTO_RESTAURADO') ?: 'proyect
 $topicUsuariosEventos = getenv('KAFKA_TOPIC_USUARIOS_EVENTOS') ?: 'usuarios.eventos';
 $topicAuthEventos = getenv('KAFKA_TOPIC_AUTH_EVENTOS') ?: 'auth.eventos';
 
+$auditDbHost = getenv('AUDIT_DB_HOST') ?: 'sudosquad_auditoria_db';
+$auditDbPort = getenv('AUDIT_DB_PORT') ?: '5432';
+$auditDbDatabase = getenv('AUDIT_DB_DATABASE') ?: 'sudosquad_auditoria_db';
+$auditDbUsername = getenv('AUDIT_DB_USERNAME') ?: 'sudosquad_auditoria_user';
+$auditDbPassword = getenv('AUDIT_DB_PASSWORD') ?: 'sudosquad_auditoria_secret_2026';
+
 $topics = [
     $topicProyectoActualizado,
     $topicProyectoEliminado,
@@ -24,7 +30,8 @@ $topics = [
 echo "Microservicio de auditoria iniciado.\n";
 echo "Broker Kafka: {$brokers}\n";
 echo "Topics: " . implode(', ', $topics) . "\n";
-echo "Group ID: {$groupId}\n\n";
+echo "Group ID: {$groupId}\n";
+echo "Base auditoria: {$auditDbHost}:{$auditDbPort}/{$auditDbDatabase}\n\n";
 
 $conf = new Conf();
 $conf->set('bootstrap.servers', $brokers);
@@ -72,6 +79,8 @@ function procesarMensaje(?string $rawPayload): void
     }
 
     $event = $payload['event'] ?? null;
+
+    guardarEventoAuditoria($payload);
 
     match ($event) {
         'proyecto.actualizado' => procesarProyectoActualizado($payload),
@@ -230,6 +239,203 @@ function procesarEventoAuth(array $payload): void
 
     echo "Auditoria de autenticación registrada en logs.\n";
     echo "========================================\n\n";
+}
+
+function conexionAuditoria(): PDO
+{
+    static $pdo = null;
+
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    $host = getenv('AUDIT_DB_HOST') ?: 'sudosquad_auditoria_db';
+    $port = getenv('AUDIT_DB_PORT') ?: '5432';
+    $database = getenv('AUDIT_DB_DATABASE') ?: 'sudosquad_auditoria_db';
+    $username = getenv('AUDIT_DB_USERNAME') ?: 'sudosquad_auditoria_user';
+    $password = getenv('AUDIT_DB_PASSWORD') ?: 'sudosquad_auditoria_secret_2026';
+
+    $dsn = "pgsql:host={$host};port={$port};dbname={$database}";
+
+    $pdo = new PDO($dsn, $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+
+    return $pdo;
+}
+
+function guardarEventoAuditoria(array $payload): void
+{
+    try {
+        $event = $payload['event'] ?? 'evento.desconocido';
+        $data = $payload['data'] ?? [];
+        $producer = $payload['producer'] ?? [];
+
+        $tipo = tipoAgregado($event);
+        $actor = actorEvento($event, $data);
+        $target = targetEvento($event, $data);
+        $aggregateId = aggregateIdEvento($event, $data);
+        $descripcion = descripcionEvento($event, $data);
+
+        $stmt = conexionAuditoria()->prepare(
+            'INSERT INTO audit_events (
+                event,
+                module,
+                aggregate_type,
+                aggregate_id,
+                actor_id,
+                actor_name,
+                actor_email,
+                actor_role,
+                target_name,
+                target_email,
+                description,
+                ip_address,
+                user_agent,
+                payload,
+                occurred_at
+            ) VALUES (
+                :event,
+                :module,
+                :aggregate_type,
+                :aggregate_id,
+                :actor_id,
+                :actor_name,
+                :actor_email,
+                :actor_role,
+                :target_name,
+                :target_email,
+                :description,
+                :ip_address,
+                :user_agent,
+                :payload,
+                :occurred_at
+            )'
+        );
+
+        $stmt->execute([
+            'event' => $event,
+            'module' => $producer['module'] ?? null,
+            'aggregate_type' => $tipo,
+            'aggregate_id' => $aggregateId,
+            'actor_id' => $actor['id'] ?? null,
+            'actor_name' => $actor['nombre'] ?? null,
+            'actor_email' => $actor['email'] ?? null,
+            'actor_role' => $actor['rol'] ?? null,
+            'target_name' => $target['nombre'] ?? null,
+            'target_email' => $target['email'] ?? null,
+            'description' => $descripcion,
+            'ip_address' => $data['ip_address'] ?? null,
+            'user_agent' => $data['user_agent'] ?? null,
+            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            'occurred_at' => $payload['occurred_at'] ?? null,
+        ]);
+
+        echo "Evento persistido en audit_events: {$event}\n";
+    } catch (Throwable $e) {
+        echo "Error guardando auditoria en BD: {$e->getMessage()}\n";
+    }
+}
+
+function tipoAgregado(?string $event): ?string
+{
+    if (!$event) {
+        return null;
+    }
+
+    return match (true) {
+        str_starts_with($event, 'proyecto.') => 'proyecto',
+        str_starts_with($event, 'usuario.') => 'usuario',
+        str_starts_with($event, 'auth.') => 'auth',
+        default => 'desconocido',
+    };
+}
+
+function aggregateIdEvento(?string $event, array $data): ?string
+{
+    if (!$event) {
+        return null;
+    }
+
+    if (str_starts_with($event, 'auth.')) {
+        $usuario = $data['usuario'] ?? null;
+
+        if (is_array($usuario) && isset($usuario['id'])) {
+            return (string) $usuario['id'];
+        }
+
+        return isset($data['email']) ? (string) $data['email'] : null;
+    }
+
+    return isset($data['id']) ? (string) $data['id'] : null;
+}
+
+function actorEvento(?string $event, array $data): array
+{
+    if ($event && str_starts_with($event, 'usuario.')) {
+        $actor = $data['usuario_accion'] ?? null;
+
+        return is_array($actor) ? $actor : [];
+    }
+
+    if ($event && str_starts_with($event, 'auth.')) {
+        $actor = $data['usuario'] ?? null;
+
+        return is_array($actor) ? $actor : [];
+    }
+
+    $actor = $data['usuario'] ?? null;
+
+    return is_array($actor) ? $actor : [];
+}
+
+function targetEvento(?string $event, array $data): array
+{
+    if ($event && str_starts_with($event, 'proyecto.')) {
+        return [
+            'nombre' => $data['titulo'] ?? null,
+            'email' => null,
+        ];
+    }
+
+    if ($event && str_starts_with($event, 'usuario.')) {
+        return [
+            'nombre' => $data['nombre'] ?? null,
+            'email' => $data['email'] ?? null,
+        ];
+    }
+
+    if ($event && str_starts_with($event, 'auth.')) {
+        $usuario = $data['usuario'] ?? null;
+
+        return [
+            'nombre' => is_array($usuario) ? ($usuario['nombre'] ?? null) : null,
+            'email' => is_array($usuario) ? ($usuario['email'] ?? ($data['email'] ?? null)) : ($data['email'] ?? null),
+        ];
+    }
+
+    return [];
+}
+
+function descripcionEvento(?string $event, array $data): string
+{
+    if (isset($data['descripcion'])) {
+        return (string) $data['descripcion'];
+    }
+
+    return match ($event) {
+        'usuario.creado' => 'Usuario creado.',
+        'usuario.actualizado' => 'Usuario actualizado.',
+        'usuario.desactivado' => 'Usuario desactivado.',
+        'usuario.restaurado' => 'Usuario restaurado.',
+        'usuario.password_actualizada' => 'Contraseña de usuario actualizada.',
+        'auth.login_exitoso' => 'Inicio de sesión exitoso.',
+        'auth.login_fallido' => 'Intento fallido de inicio de sesión.',
+        'auth.cuenta_bloqueada' => 'Cuenta bloqueada por intentos fallidos.',
+        'auth.logout' => 'Cierre de sesión.',
+        default => 'Evento de auditoria consumido desde Kafka.',
+    };
 }
 
 function normalizarValor(mixed $valor): string

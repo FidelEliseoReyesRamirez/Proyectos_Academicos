@@ -86,6 +86,32 @@ services:
       - sudosquad_pgadmin_data:/var/lib/pgadmin
 
   # -------------------------------------------------------
+  # Base de datos propia del microservicio de auditoria
+  # -------------------------------------------------------
+  sudosquad_auditoria_db:
+    image: postgres:16-alpine
+    container_name: sudosquad_auditoria_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sudosquad_auditoria_db
+      POSTGRES_USER: sudosquad_auditoria_user
+      POSTGRES_PASSWORD: sudosquad_auditoria_secret_2026
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5434:5432"
+    volumes:
+      - sudosquad_auditoria_pgdata:/var/lib/postgresql/data
+      - ./services/auditoria-service/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - sudosquad_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sudosquad_auditoria_user -d sudosquad_auditoria_db"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # -------------------------------------------------------
   # Laravel principal — http://localhost:8000
   # -------------------------------------------------------
   sudosquad_laravel:
@@ -161,6 +187,12 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      AUDIT_DB_HOST: sudosquad_auditoria_db
+      AUDIT_DB_PORT: 5432
+      AUDIT_DB_DATABASE: sudosquad_auditoria_db
+      AUDIT_DB_USERNAME: sudosquad_auditoria_user
+      AUDIT_DB_PASSWORD: sudosquad_auditoria_secret_2026
     depends_on:
       sudosquad_kafka:
         condition: service_healthy
@@ -185,8 +217,16 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      AUDIT_DB_HOST: sudosquad_auditoria_db
+      AUDIT_DB_PORT: 5432
+      AUDIT_DB_DATABASE: sudosquad_auditoria_db
+      AUDIT_DB_USERNAME: sudosquad_auditoria_user
+      AUDIT_DB_PASSWORD: sudosquad_auditoria_secret_2026
     depends_on:
       sudosquad_kafka:
+        condition: service_healthy
+      sudosquad_auditoria_db:
         condition: service_healthy
     networks:
       - sudosquad_net
@@ -231,6 +271,7 @@ services:
 volumes:
   sudosquad_pgdata:
   sudosquad_pgadmin_data:
+  sudosquad_auditoria_pgdata:
   sudosquad_node_modules:
 
 networks:
