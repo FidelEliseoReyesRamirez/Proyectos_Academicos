@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Models\User;
+use App\Services\KafkaProducerService;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
+use Throwable;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -220,6 +222,8 @@ class FortifyServiceProvider extends ServiceProvider
                 'Cuenta bloqueada temporalmente por superar el límite de intentos fallidos consecutivos.'
             );
 
+            $this->publicarEventoCuentaBloqueada($request, $user);
+
             throw ValidationException::withMessages([
                 'email' => 'Cuenta bloqueada temporalmente por demasiados intentos fallidos. Intenta nuevamente en ' . self::MINUTOS_BLOQUEO . ' minutos.',
             ]);
@@ -247,6 +251,43 @@ class FortifyServiceProvider extends ServiceProvider
             'user_agent' => substr((string) $request->userAgent(), 0, 1000),
             'created_at' => now(),
         ]);
+    }
+
+
+    private function publicarEventoCuentaBloqueada(Request $request, User $user): void
+    {
+        try {
+            app(KafkaProducerService::class)->publish(
+                config('kafka.topics.auth_eventos'),
+                [
+                    'event' => 'auth.cuenta_bloqueada',
+                    'version' => 1,
+                    'occurred_at' => now()->toISOString(),
+                    'producer' => [
+                        'service' => 'proyectos-academicos-monolith',
+                        'module' => 'auth',
+                    ],
+                    'data' => [
+                        'usuario' => [
+                            'id' => (int) $user->id,
+                            'nombre' => $user->name,
+                            'email' => $user->email,
+                            'rol' => $user->rol,
+                            'activo' => (bool) $user->activo,
+                            'intentos_fallidos' => (int) $user->intentos_fallidos,
+                            'bloqueado_hasta' => $user->bloqueado_hasta,
+                        ],
+                        'email' => Str::lower(trim((string) $request->input('email'))),
+                        'ip_address' => $request->ip(),
+                        'user_agent' => substr((string) $request->userAgent(), 0, 1000),
+                        'descripcion' => 'Cuenta bloqueada temporalmente por superar el límite de intentos fallidos consecutivos.',
+                    ],
+                ],
+                (string) $user->id
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 
     private function registrarAuditoria(
