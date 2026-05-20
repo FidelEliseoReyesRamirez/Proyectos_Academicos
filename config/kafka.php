@@ -17,5 +17,20 @@ return [
             'KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO',
             'proyectos.estado_actualizado'
         ),
+
+        'proyecto_actualizado' => env(
+            'KAFKA_TOPIC_PROYECTO_ACTUALIZADO',
+            'proyectos.actualizados'
+        ),
+
+        'proyecto_eliminado' => env(
+            'KAFKA_TOPIC_PROYECTO_ELIMINADO',
+            'proyectos.eliminados'
+        ),
+
+        'proyecto_restaurado' => env(
+            'KAFKA_TOPIC_PROYECTO_RESTAURADO',
+            'proyectos.restaurados'
+        ),
     ],
 ];

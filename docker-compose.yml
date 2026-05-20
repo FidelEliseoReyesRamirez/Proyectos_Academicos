@@ -116,6 +116,9 @@ services:
       KAFKA_GROUP_ID: sudosquad-notifications
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
       KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO: proyectos.estado_actualizado
+      KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
+      KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
+      KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
     depends_on:
       sudosquad_db:
         condition: service_healthy
@@ -151,6 +154,31 @@ services:
       KAFKA_GROUP_ID: sudosquad-notificaciones-service
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
       KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO: proyectos.estado_actualizado
+      KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
+      KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
+      KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
+    depends_on:
+      sudosquad_kafka:
+        condition: service_healthy
+    networks:
+      - sudosquad_net
+
+  # -------------------------------------------------------
+  # Microservicio real de auditoria
+  # -------------------------------------------------------
+  sudosquad_auditoria:
+    build:
+      context: ./services/auditoria-service
+      dockerfile: Dockerfile
+    container_name: sudosquad_auditoria
+    restart: unless-stopped
+    environment:
+      KAFKA_BROKERS: sudosquad_kafka:19092
+      KAFKA_CLIENT_ID: sudosquad-auditoria
+      KAFKA_GROUP_ID: sudosquad-auditoria-service
+      KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
+      KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
+      KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
     depends_on:
       sudosquad_kafka:
         condition: service_healthy

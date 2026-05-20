@@ -299,6 +299,24 @@ class ProyectoController extends Controller
             ]);
         }
 
+        $camposAuditables = [
+            'titulo',
+            'descripcion',
+            'modalidad',
+            'area_tematica',
+            'estado',
+            'periodo_id',
+            'estudiante_id',
+            'tutor_id',
+        ];
+
+        $valoresAnteriores = [];
+        foreach ($camposAuditables as $campo) {
+            $valoresAnteriores[$campo] = $proyecto->{$campo};
+        }
+
+        $revisoresAnteriores = $this->obtenerIdsRevisores($proyecto->id);
+
         unset($validated['revisores_ids']);
 
         $validated['area_tematica'] = !empty($validated['area_tematica'])
@@ -325,6 +343,35 @@ class ProyectoController extends Controller
                 DB::table('proyecto_revisores')->insert($filas);
             }
         });
+
+        $proyecto->refresh();
+
+        $cambios = [];
+
+        foreach ($camposAuditables as $campo) {
+            $antes = $valoresAnteriores[$campo] ?? null;
+            $despues = $proyecto->{$campo};
+
+            if ((string) $antes !== (string) $despues) {
+                $cambios[$campo] = [
+                    'antes' => $antes,
+                    'despues' => $despues,
+                ];
+            }
+        }
+
+        $revisoresNuevos = $this->obtenerIdsRevisores($proyecto->id);
+
+        if ($revisoresAnteriores !== $revisoresNuevos) {
+            $cambios['revisores_ids'] = [
+                'antes' => $revisoresAnteriores,
+                'despues' => $revisoresNuevos,
+            ];
+        }
+
+        if (!empty($cambios)) {
+            $this->publicarProyectoActualizado($proyecto, $cambios);
+        }
 
         return to_route('proyectos.index')->with('toast', [
             'type'    => 'success',
@@ -459,11 +506,15 @@ class ProyectoController extends Controller
     // ============================================================
     public function destroy(Proyecto $proyecto): RedirectResponse
     {
+        $codigo = $proyecto->codigo;
+
         $proyecto->delete();
+
+        $this->publicarProyectoEliminado($proyecto);
 
         return back()->with('toast', [
             'type'    => 'success',
-            'message' => "Proyecto {$proyecto->codigo} enviado a la papelera.",
+            'message' => "Proyecto {$codigo} enviado a la papelera.",
         ]);
     }
 
@@ -485,9 +536,221 @@ class ProyectoController extends Controller
 
         $proyecto->restore();
 
+        $this->publicarProyectoRestaurado($proyecto);
+
         return back()->with('toast', [
             'type'    => 'success',
             'message' => "Proyecto {$proyecto->codigo} restaurado correctamente.",
         ]);
     }
+
+    /**
+     * @return array<int, int>
+     */
+    private function obtenerIdsRevisores(int $proyectoId): array
+    {
+        return DB::table('proyecto_revisores')
+            ->where('proyecto_id', $proyectoId)
+            ->pluck('revisor_id')
+            ->map(fn ($id) => (int) $id)
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function obtenerRevisoresEvento(int $proyectoId): array
+    {
+        return DB::table('proyecto_revisores')
+            ->join('users', 'users.id', '=', 'proyecto_revisores.revisor_id')
+            ->where('proyecto_revisores.proyecto_id', $proyectoId)
+            ->select([
+                'users.id',
+                'users.name',
+                'users.email',
+                'proyecto_revisores.asignado_en',
+            ])
+            ->orderBy('users.name')
+            ->get()
+            ->map(fn ($revisor) => [
+                'id' => (int) $revisor->id,
+                'nombre' => $revisor->name,
+                'email' => $revisor->email,
+                'asignado_en' => $revisor->asignado_en,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function obtenerProyectoEvento(int $proyectoId, bool $withTrashed = false): Proyecto
+    {
+        $query = Proyecto::query()
+            ->with([
+                'periodo:id,nombre,fecha_inicio,fecha_cierre',
+                'estudiante:id,name,email',
+                'tutor:id,name,email',
+            ]);
+
+        if ($withTrashed) {
+            $query->withTrashed();
+        }
+
+        return $query->findOrFail($proyectoId);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $revisores
+     * @return array<string, mixed>
+     */
+    private function formatearProyectoEvento(Proyecto $proyecto, array $revisores): array
+    {
+        return [
+            'id' => (int) $proyecto->id,
+            'codigo' => $proyecto->codigo,
+            'titulo' => $proyecto->titulo,
+            'descripcion' => $proyecto->descripcion,
+            'modalidad' => $proyecto->modalidad,
+            'area_tematica' => $proyecto->area_tematica,
+            'estado' => $proyecto->estado,
+
+            'periodo' => $proyecto->periodo ? [
+                'id' => (int) $proyecto->periodo->id,
+                'nombre' => $proyecto->periodo->nombre,
+                'fecha_inicio' => $proyecto->periodo->fecha_inicio,
+                'fecha_cierre' => $proyecto->periodo->fecha_cierre,
+            ] : null,
+
+            'estudiante' => $proyecto->estudiante ? [
+                'id' => (int) $proyecto->estudiante->id,
+                'nombre' => $proyecto->estudiante->name,
+                'email' => $proyecto->estudiante->email,
+            ] : null,
+
+            'tutor' => $proyecto->tutor ? [
+                'id' => (int) $proyecto->tutor->id,
+                'nombre' => $proyecto->tutor->name,
+                'email' => $proyecto->tutor->email,
+            ] : null,
+
+            'revisores' => $revisores,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function usuarioEvento(): ?array
+    {
+        $usuario = Auth::user();
+
+        if (!$usuario) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $usuario->id,
+            'nombre' => $usuario->name,
+            'email' => $usuario->email,
+            'rol' => $usuario->rol,
+        ];
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $cambios
+     */
+    private function publicarProyectoActualizado(Proyecto $proyecto, array $cambios): void
+    {
+        try {
+            $proyectoCompleto = $this->obtenerProyectoEvento($proyecto->id);
+            $revisores = $this->obtenerRevisoresEvento($proyecto->id);
+
+            app(KafkaProducerService::class)->publish(
+                config('kafka.topics.proyecto_actualizado'),
+                [
+                    'event' => 'proyecto.actualizado',
+                    'version' => 1,
+                    'occurred_at' => now()->toISOString(),
+                    'producer' => [
+                        'service' => 'proyectos-academicos-monolith',
+                        'module' => 'proyectos',
+                    ],
+                    'data' => array_merge(
+                        $this->formatearProyectoEvento($proyectoCompleto, $revisores),
+                        [
+                            'usuario' => $this->usuarioEvento(),
+                            'cambios' => $cambios,
+                        ]
+                    ),
+                ],
+                (string) $proyectoCompleto->id
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function publicarProyectoEliminado(Proyecto $proyecto): void
+    {
+        try {
+            $proyectoCompleto = $this->obtenerProyectoEvento($proyecto->id, true);
+            $revisores = $this->obtenerRevisoresEvento($proyecto->id);
+
+            app(KafkaProducerService::class)->publish(
+                config('kafka.topics.proyecto_eliminado'),
+                [
+                    'event' => 'proyecto.eliminado',
+                    'version' => 1,
+                    'occurred_at' => now()->toISOString(),
+                    'producer' => [
+                        'service' => 'proyectos-academicos-monolith',
+                        'module' => 'proyectos',
+                    ],
+                    'data' => array_merge(
+                        $this->formatearProyectoEvento($proyectoCompleto, $revisores),
+                        [
+                            'usuario' => $this->usuarioEvento(),
+                            'deleted_at' => optional($proyectoCompleto->deleted_at)->toISOString(),
+                        ]
+                    ),
+                ],
+                (string) $proyectoCompleto->id
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function publicarProyectoRestaurado(Proyecto $proyecto): void
+    {
+        try {
+            $proyectoCompleto = $this->obtenerProyectoEvento($proyecto->id);
+            $revisores = $this->obtenerRevisoresEvento($proyecto->id);
+
+            app(KafkaProducerService::class)->publish(
+                config('kafka.topics.proyecto_restaurado'),
+                [
+                    'event' => 'proyecto.restaurado',
+                    'version' => 1,
+                    'occurred_at' => now()->toISOString(),
+                    'producer' => [
+                        'service' => 'proyectos-academicos-monolith',
+                        'module' => 'proyectos',
+                    ],
+                    'data' => array_merge(
+                        $this->formatearProyectoEvento($proyectoCompleto, $revisores),
+                        [
+                            'usuario' => $this->usuarioEvento(),
+                            'restored_at' => now()->toISOString(),
+                        ]
+                    ),
+                ],
+                (string) $proyectoCompleto->id
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
 }
