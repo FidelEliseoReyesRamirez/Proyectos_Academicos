@@ -10,11 +10,15 @@ $groupId = getenv('KAFKA_GROUP_ID') ?: 'sudosquad-auditoria-service';
 $topicProyectoActualizado = getenv('KAFKA_TOPIC_PROYECTO_ACTUALIZADO') ?: 'proyectos.actualizados';
 $topicProyectoEliminado = getenv('KAFKA_TOPIC_PROYECTO_ELIMINADO') ?: 'proyectos.eliminados';
 $topicProyectoRestaurado = getenv('KAFKA_TOPIC_PROYECTO_RESTAURADO') ?: 'proyectos.restaurados';
+$topicUsuariosEventos = getenv('KAFKA_TOPIC_USUARIOS_EVENTOS') ?: 'usuarios.eventos';
+$topicAuthEventos = getenv('KAFKA_TOPIC_AUTH_EVENTOS') ?: 'auth.eventos';
 
 $topics = [
     $topicProyectoActualizado,
     $topicProyectoEliminado,
     $topicProyectoRestaurado,
+    $topicUsuariosEventos,
+    $topicAuthEventos,
 ];
 
 echo "Microservicio de auditoria iniciado.\n";
@@ -73,6 +77,18 @@ function procesarMensaje(?string $rawPayload): void
         'proyecto.actualizado' => procesarProyectoActualizado($payload),
         'proyecto.eliminado' => procesarProyectoEliminado($payload),
         'proyecto.restaurado' => procesarProyectoRestaurado($payload),
+
+        'usuario.creado',
+        'usuario.actualizado',
+        'usuario.desactivado',
+        'usuario.restaurado',
+        'usuario.password_actualizada' => procesarEventoUsuario($payload),
+
+        'auth.login_exitoso',
+        'auth.login_fallido',
+        'auth.cuenta_bloqueada',
+        'auth.logout' => procesarEventoAuth($payload),
+
         default => print "Evento ignorado por auditoria: {$event}\n",
     };
 }
@@ -142,6 +158,77 @@ function procesarProyectoRestaurado(array $payload): void
     echo "Restaurado por: {$base['usuario']} ({$base['rol']})\n";
     echo "Fecha restauración: {$restoredAt}\n";
     echo "Auditoria registrada en logs.\n";
+    echo "========================================\n\n";
+}
+
+function procesarEventoUsuario(array $payload): void
+{
+    $event = $payload['event'] ?? 'usuario.evento_desconocido';
+    $data = $payload['data'] ?? [];
+
+    $nombre = $data['nombre'] ?? 'Usuario no definido';
+    $email = $data['email'] ?? 'email_no_definido';
+    $rol = $data['rol'] ?? 'rol_no_definido';
+    $activo = array_key_exists('activo', $data) ? normalizarValor((bool) $data['activo']) : 'estado_no_definido';
+    $usuarioAccion = $data['usuario_accion']['nombre'] ?? 'Sistema / registro público';
+    $rolAccion = $data['usuario_accion']['rol'] ?? 'sin_rol';
+    $occurredAt = $payload['occurred_at'] ?? 'fecha_no_definida';
+
+    echo "\n========================================\n";
+    echo "Evento recibido: {$event}\n";
+    echo "Usuario afectado: {$nombre} <{$email}>\n";
+    echo "Rol: {$rol}\n";
+    echo "Activo: {$activo}\n";
+    echo "Ejecutado por: {$usuarioAccion} ({$rolAccion})\n";
+    echo "Fecha evento: {$occurredAt}\n";
+
+    if (isset($data['cambios']) && is_array($data['cambios'])) {
+        echo "Cambios detectados:\n";
+
+        foreach ($data['cambios'] as $campo => $valores) {
+            $anterior = normalizarValor($valores['anterior'] ?? null);
+            $nuevo = normalizarValor($valores['nuevo'] ?? null);
+
+            echo "- {$campo}: {$anterior} -> {$nuevo}\n";
+        }
+    }
+
+    if (array_key_exists('estado_anterior', $data) || array_key_exists('estado_nuevo', $data)) {
+        echo "Estado anterior: " . normalizarValor($data['estado_anterior'] ?? null) . "\n";
+        echo "Estado nuevo: " . normalizarValor($data['estado_nuevo'] ?? null) . "\n";
+    }
+
+    echo "Auditoria de usuario registrada en logs.\n";
+    echo "========================================\n\n";
+}
+
+function procesarEventoAuth(array $payload): void
+{
+    $event = $payload['event'] ?? 'auth.evento_desconocido';
+    $data = $payload['data'] ?? [];
+    $usuario = $data['usuario'] ?? null;
+
+    $nombre = is_array($usuario) ? ($usuario['nombre'] ?? 'Usuario no definido') : 'Usuario no definido';
+    $email = is_array($usuario) ? ($usuario['email'] ?? ($data['email'] ?? 'email_no_definido')) : ($data['email'] ?? 'email_no_definido');
+    $rol = is_array($usuario) ? ($usuario['rol'] ?? 'rol_no_definido') : 'rol_no_definido';
+
+    echo "\n========================================\n";
+    echo "Evento recibido: {$event}\n";
+    echo "Usuario: {$nombre} <{$email}>\n";
+    echo "Rol: {$rol}\n";
+    echo "IP: " . ($data['ip_address'] ?? 'ip_no_definida') . "\n";
+    echo "Descripción: " . ($data['descripcion'] ?? 'Sin descripción') . "\n";
+    echo "Fecha evento: " . ($payload['occurred_at'] ?? 'fecha_no_definida') . "\n";
+
+    if (is_array($usuario) && array_key_exists('intentos_fallidos', $usuario)) {
+        echo "Intentos fallidos: " . normalizarValor($usuario['intentos_fallidos']) . "\n";
+    }
+
+    if (is_array($usuario) && array_key_exists('bloqueado_hasta', $usuario)) {
+        echo "Bloqueado hasta: " . normalizarValor($usuario['bloqueado_hasta']) . "\n";
+    }
+
+    echo "Auditoria de autenticación registrada en logs.\n";
     echo "========================================\n\n";
 }
 
