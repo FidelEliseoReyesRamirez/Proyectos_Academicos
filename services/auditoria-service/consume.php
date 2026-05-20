@@ -80,7 +80,9 @@ function procesarMensaje(?string $rawPayload): void
 
     $event = $payload['event'] ?? null;
 
-    guardarEventoAuditoria($payload);
+    if (! guardarEventoAuditoria($payload, $rawPayload)) {
+        return;
+    }
 
     match ($event) {
         'proyecto.actualizado' => procesarProyectoActualizado($payload),
@@ -265,10 +267,11 @@ function conexionAuditoria(): PDO
     return $pdo;
 }
 
-function guardarEventoAuditoria(array $payload): void
+function guardarEventoAuditoria(array $payload, string $rawPayload): bool
 {
     try {
         $event = $payload['event'] ?? 'evento.desconocido';
+        $eventId = $payload['event_id'] ?? hash('sha256', $rawPayload);
         $data = $payload['data'] ?? [];
         $producer = $payload['producer'] ?? [];
 
@@ -280,6 +283,7 @@ function guardarEventoAuditoria(array $payload): void
 
         $stmt = conexionAuditoria()->prepare(
             'INSERT INTO audit_events (
+                event_id,
                 event,
                 module,
                 aggregate_type,
@@ -296,6 +300,7 @@ function guardarEventoAuditoria(array $payload): void
                 payload,
                 occurred_at
             ) VALUES (
+                :event_id,
                 :event,
                 :module,
                 :aggregate_type,
@@ -311,10 +316,12 @@ function guardarEventoAuditoria(array $payload): void
                 :user_agent,
                 :payload,
                 :occurred_at
-            )'
+            )
+            ON CONFLICT (event_id) DO NOTHING'
         );
 
         $stmt->execute([
+            'event_id' => $eventId,
             'event' => $event,
             'module' => $producer['module'] ?? null,
             'aggregate_type' => $tipo,
@@ -332,9 +339,18 @@ function guardarEventoAuditoria(array $payload): void
             'occurred_at' => $payload['occurred_at'] ?? null,
         ]);
 
+        if ($stmt->rowCount() === 0) {
+            echo "Evento duplicado ignorado en audit_events: {$event}\n";
+            return false;
+        }
+
         echo "Evento persistido en audit_events: {$event}\n";
+
+        return true;
     } catch (Throwable $e) {
         echo "Error guardando auditoria en BD: {$e->getMessage()}\n";
+
+        return false;
     }
 }
 

@@ -7,6 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id              BIGSERIAL PRIMARY KEY,
+    event_id        VARCHAR(120) NOT NULL,
     event           VARCHAR(120) NOT NULL,
     module          VARCHAR(80),
     aggregate_type  VARCHAR(80),
@@ -24,6 +25,9 @@ CREATE TABLE IF NOT EXISTS audit_events (
     occurred_at     TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_audit_events_event_id
+    ON audit_events (event_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_event
     ON audit_events (event);
