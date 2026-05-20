@@ -115,6 +115,7 @@ services:
       KAFKA_CLIENT_ID: sudosquad-laravel
       KAFKA_GROUP_ID: sudosquad-notifications
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
+      KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO: proyectos.estado_actualizado
     depends_on:
       sudosquad_db:
         condition: service_healthy
@@ -149,6 +150,7 @@ services:
       KAFKA_CLIENT_ID: sudosquad-notificaciones
       KAFKA_GROUP_ID: sudosquad-notificaciones-service
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
+      KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO: proyectos.estado_actualizado
     depends_on:
       sudosquad_kafka:
         condition: service_healthy

@@ -1,5 +1,6 @@
 import { router, Head, Link } from '@inertiajs/react';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import {
     Plus, Search, Filter, FolderKanban, X, CalendarDays,
@@ -54,6 +55,10 @@ const ESTADOS_OPTIONS = [
     { value: 'concluido',     label: 'Concluido'     },
 ];
 
+/* ─────────────────────────────────────────────────────────────
+   ConfirmModal — renderizado en document.body via createPortal
+   para evitar quedar atrapado dentro de contenedores overflow
+   ───────────────────────────────────────────────────────────── */
 function ConfirmModal({
     open,
     title,
@@ -77,7 +82,7 @@ function ConfirmModal({
 }) {
     if (!open) return null;
 
-    return (
+    return createPortal(
         <div className="modal-backdrop" role="dialog" aria-modal="true">
             <div className="modal-card">
                 <div className="modal-header">
@@ -116,10 +121,14 @@ function ConfirmModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   SearchableCombobox
+   ───────────────────────────────────────────────────────────── */
 function SearchableCombobox({
     options,
     value,
@@ -144,10 +153,7 @@ function SearchableCombobox({
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-
-        return q
-            ? options.filter((o) => o.label.toLowerCase().includes(q))
-            : options;
+        return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;
     }, [options, query]);
 
     useEffect(() => {
@@ -157,9 +163,7 @@ function SearchableCombobox({
                 setQuery('');
             }
         };
-
         if (open) document.addEventListener('mousedown', onClickOutside);
-
         return () => document.removeEventListener('mousedown', onClickOutside);
     }, [open]);
 
@@ -173,7 +177,6 @@ function SearchableCombobox({
                 <span className={selected ? 'combo-text' : 'combo-placeholder'}>
                     {selected ? selected.label : placeholder}
                 </span>
-
                 <ChevronDown className="combo-chev" />
             </button>
 
@@ -181,7 +184,6 @@ function SearchableCombobox({
                 <div className="combo-panel">
                     <div className="combo-search">
                         <Search className="h-3.5 w-3.5 opacity-60" />
-
                         <input
                             autoFocus
                             className="combo-search-input"
@@ -189,15 +191,11 @@ function SearchableCombobox({
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                         />
-
                         {value && (
                             <button
                                 type="button"
                                 className="combo-clear"
-                                onClick={() => {
-                                    onChange('');
-                                    setQuery('');
-                                }}
+                                onClick={() => { onChange(''); setQuery(''); }}
                                 aria-label="Limpiar"
                             >
                                 <X className="h-3.5 w-3.5" />
@@ -211,17 +209,12 @@ function SearchableCombobox({
                         ) : (
                             filtered.map((opt) => {
                                 const isSel = String(opt.id) === String(value);
-
                                 return (
                                     <button
                                         key={opt.id}
                                         type="button"
                                         className={`combo-item ${isSel ? 'is-selected' : ''}`}
-                                        onClick={() => {
-                                            onChange(String(opt.id));
-                                            setOpen(false);
-                                            setQuery('');
-                                        }}
+                                        onClick={() => { onChange(String(opt.id)); setOpen(false); setQuery(''); }}
                                     >
                                         <span>{opt.label}</span>
                                         {isSel && <Check className="h-4 w-4" />}
@@ -236,53 +229,55 @@ function SearchableCombobox({
     );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   StatePicker — panel renderizado en document.body via createPortal.
+   Calcula la posicion del boton con getBoundingClientRect() y usa
+   position: fixed para escapar de cualquier contenedor overflow.
+   ───────────────────────────────────────────────────────────── */
 function StatePicker({ proyecto }: { proyecto: Proyecto }) {
     const [open, setOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [pendingEstado, setPendingEstado] = useState<{ value: string; label: string } | null>(null);
     const [processingEstado, setProcessingEstado] = useState(false);
-    const [pos, setPos] = useState({ top: 0, left: 0 });
+    const [panelPos, setPanelPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
     const btnRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
 
-    const openMenu = () => {
-        if (!btnRef.current) return;
+    const PANEL_WIDTH  = 230;
+    const PANEL_HEIGHT = 310;
+    const MARGIN       = 8;
+
+    const calcularPosicion = (): { top: number; left: number } => {
+        if (!btnRef.current) return { top: 0, left: 0 };
 
         const rect = btnRef.current.getBoundingClientRect();
-        const mobile = window.innerWidth <= 640;
 
-        setIsMobile(mobile);
-
-        if (mobile) {
-            setOpen(true);
-            return;
-        }
-
-        const panelWidth = 230;
-        const panelHeight = 310;
-        const margin = 8;
-
-        let left = rect.right - panelWidth;
-
-        if (left < margin) left = margin;
-
-        if (left + panelWidth > window.innerWidth - margin) {
-            left = window.innerWidth - panelWidth - margin;
+        let left = rect.right - PANEL_WIDTH;
+        if (left < MARGIN) left = MARGIN;
+        if (left + PANEL_WIDTH > window.innerWidth - MARGIN) {
+            left = window.innerWidth - PANEL_WIDTH - MARGIN;
         }
 
         let top = rect.bottom + 6;
-
-        if (top + panelHeight > window.innerHeight - margin) {
-            top = rect.top - panelHeight - 6;
+        if (top + PANEL_HEIGHT > window.innerHeight - MARGIN) {
+            top = rect.top - PANEL_HEIGHT - 6;
         }
+        if (top < MARGIN) top = MARGIN;
 
-        if (top < margin) top = margin;
+        return { top, left };
+    };
 
-        setPos({ top, left });
+    const abrirMenu = () => {
+        const mobile = window.innerWidth <= 640;
+        setIsMobile(mobile);
+        if (!mobile) setPanelPos(calcularPosicion());
         setOpen(true);
     };
 
+    const cerrarPanel = () => setOpen(false);
+
+    /* Cierre al hacer clic afuera, Escape, scroll o resize */
     useEffect(() => {
         if (!open) return;
 
@@ -291,20 +286,18 @@ function StatePicker({ proyecto }: { proyecto: Proyecto }) {
                 !panelRef.current?.contains(e.target as Node) &&
                 !btnRef.current?.contains(e.target as Node)
             ) {
-                setOpen(false);
+                cerrarPanel();
             }
         };
 
-        const onEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setOpen(false);
-        };
-
-        const onResize = () => setOpen(false);
+        const onEsc    = (e: KeyboardEvent) => { if (e.key === 'Escape') cerrarPanel(); };
+        const onResize = () => cerrarPanel();
 
         document.addEventListener('mousedown', onDocClick);
         document.addEventListener('keydown', onEsc);
         window.addEventListener('resize', onResize);
 
+        /* En desktop cerramos tambien al hacer scroll en cualquier contenedor */
         if (!isMobile) {
             window.addEventListener('scroll', onResize, true);
         }
@@ -318,56 +311,50 @@ function StatePicker({ proyecto }: { proyecto: Proyecto }) {
     }, [open, isMobile]);
 
     const handlePick = (estado: string) => {
-        setOpen(false);
-
+        cerrarPanel();
         if (proyecto.estado === estado) return;
-
-        const label = ESTADO_COLOR[estado]?.label ?? estado;
-
-        setPendingEstado({ value: estado, label });
+        setPendingEstado({ value: estado, label: ESTADO_COLOR[estado]?.label ?? estado });
     };
 
     const confirmarCambioEstado = () => {
         if (!pendingEstado) return;
-
         setProcessingEstado(true);
-
         router.post(
             `/proyectos/${proyecto.id}/cambiar-estado`,
             { estado: pendingEstado.value },
             {
                 preserveScroll: true,
                 onSuccess: () => setPendingEstado(null),
-                onFinish: () => setProcessingEstado(false),
+                onFinish:  () => setProcessingEstado(false),
             },
         );
     };
 
-    return (
-        <>
-            <button
-                ref={btnRef}
-                type="button"
-                className="action-btn is-state"
-                onClick={() => (open ? setOpen(false) : openMenu())}
-                title="Cambiar estado"
-                aria-label="Cambiar estado"
-            >
-                <Activity className="h-4 w-4" />
-            </button>
+    /* Panel de estados — montado en document.body */
+    const panelNode = open
+        ? createPortal(
+            <>
+                {/* Backdrop solo en movil */}
+                {isMobile && (
+                    <div
+                        className="state-backdrop"
+                        aria-hidden="true"
+                        onClick={cerrarPanel}
+                    />
+                )}
 
-            {open && isMobile && (
-                <div className="state-backdrop" aria-hidden="true" />
-            )}
-
-            {open && (
                 <div
                     ref={panelRef}
                     className={`state-panel ${isMobile ? 'is-mobile' : ''}`}
                     style={
                         isMobile
                             ? undefined
-                            : { position: 'fixed', top: pos.top, left: pos.left }
+                            : {
+                                position: 'fixed',
+                                top: panelPos.top,
+                                left: panelPos.left,
+                                zIndex: 99999,
+                              }
                     }
                 >
                     <div className="state-panel-header">
@@ -380,7 +367,7 @@ function StatePicker({ proyecto }: { proyecto: Proyecto }) {
                             <button
                                 type="button"
                                 className="state-panel-close"
-                                onClick={() => setOpen(false)}
+                                onClick={cerrarPanel}
                                 aria-label="Cerrar"
                             >
                                 <X className="h-4 w-4" />
@@ -389,9 +376,8 @@ function StatePicker({ proyecto }: { proyecto: Proyecto }) {
                     </div>
 
                     {ESTADOS_OPTIONS.map(({ value, label }) => {
-                        const meta = ESTADO_COLOR[value];
+                        const meta      = ESTADO_COLOR[value];
                         const isCurrent = proyecto.estado === value;
-
                         return (
                             <button
                                 key={value}
@@ -407,7 +393,25 @@ function StatePicker({ proyecto }: { proyecto: Proyecto }) {
                         );
                     })}
                 </div>
-            )}
+            </>,
+            document.body,
+        )
+        : null;
+
+    return (
+        <>
+            <button
+                ref={btnRef}
+                type="button"
+                className="action-btn is-state"
+                onClick={() => (open ? cerrarPanel() : abrirMenu())}
+                title="Cambiar estado"
+                aria-label="Cambiar estado"
+            >
+                <Activity className="h-4 w-4" />
+            </button>
+
+            {panelNode}
 
             <ConfirmModal
                 open={!!pendingEstado}
@@ -420,31 +424,32 @@ function StatePicker({ proyecto }: { proyecto: Proyecto }) {
                 confirmText="Cambiar estado"
                 variant="default"
                 processing={processingEstado}
-                onCancel={() => {
-                    if (!processingEstado) setPendingEstado(null);
-                }}
+                onCancel={() => { if (!processingEstado) setPendingEstado(null); }}
                 onConfirm={confirmarCambioEstado}
             />
         </>
     );
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Index page
+   ───────────────────────────────────────────────────────────── */
 export default function Index({ proyectos, periodos, tutores, eliminados_count, filters }: Props) {
     const [values, setValues] = useState<Filters>({
-        busqueda: filters.busqueda || '',
-        periodo_id: filters.periodo_id || '',
-        tutor_id: filters.tutor_id || '',
+        busqueda:         filters.busqueda         || '',
+        periodo_id:       filters.periodo_id       || '',
+        tutor_id:         filters.tutor_id         || '',
         estudiante_buscar: filters.estudiante_buscar || '',
-        estado: filters.estado || '',
+        estado:           filters.estado           || '',
     });
 
-    const [deleteTarget, setDeleteTarget] = useState<Proyecto | null>(null);
+    const [deleteTarget,     setDeleteTarget]     = useState<Proyecto | null>(null);
     const [deleteProcessing, setDeleteProcessing] = useState(false);
 
     const handleFilter = (newValues: Filters) => {
         router.get('/proyectos', newValues, {
-            preserveState: true,
-            replace: true,
+            preserveState:  true,
+            replace:        true,
             preserveScroll: true,
         });
     };
@@ -455,19 +460,13 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
         handleFilter(next);
     };
 
-    const eliminar = (p: Proyecto) => {
-        setDeleteTarget(p);
-    };
-
     const confirmarEliminar = () => {
         if (!deleteTarget) return;
-
         setDeleteProcessing(true);
-
         router.delete(`/proyectos/${deleteTarget.id}`, {
             preserveScroll: true,
             onSuccess: () => setDeleteTarget(null),
-            onFinish: () => setDeleteProcessing(false),
+            onFinish:  () => setDeleteProcessing(false),
         });
     };
 
@@ -475,28 +474,28 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
         <>
             <Head title="Repositorio de Proyectos" />
 
+            {/* Modal de confirmacion de eliminacion — montado en body via createPortal dentro de ConfirmModal */}
             <ConfirmModal
                 open={!!deleteTarget}
                 title="Enviar proyecto a la papelera"
                 message={
                     deleteTarget
-                        ? `¿Eliminar el proyecto "${deleteTarget.titulo}"? Podrás restaurarlo desde la papelera.`
+                        ? `¿Eliminar el proyecto "${deleteTarget.titulo}"? Podras restaurarlo desde la papelera.`
                         : ''
                 }
                 confirmText="Eliminar"
                 variant="danger"
                 processing={deleteProcessing}
-                onCancel={() => {
-                    if (!deleteProcessing) setDeleteTarget(null);
-                }}
+                onCancel={() => { if (!deleteProcessing) setDeleteTarget(null); }}
                 onConfirm={confirmarEliminar}
             />
 
             <style>{`
+                /* ── Modal ── */
                 .modal-backdrop {
                     position: fixed;
                     inset: 0;
-                    z-index: 10000;
+                    z-index: 99999;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -504,17 +503,15 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     background: rgba(18, 12, 16, 0.55);
                     backdrop-filter: blur(4px);
                 }
-
                 .modal-card {
                     width: min(100%, 430px);
                     border-radius: 1.25rem;
                     padding: 1.25rem;
                     background: #fffaf4;
                     color: #24151A;
-                    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
-                    border: 1px solid rgba(107, 18, 48, 0.16);
+                    box-shadow: 0 24px 70px rgba(0,0,0,0.25);
+                    border: 1px solid rgba(107,18,48,0.16);
                 }
-
                 .modal-header {
                     display: flex;
                     align-items: flex-start;
@@ -522,13 +519,11 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     gap: 1rem;
                     margin-bottom: 0.75rem;
                 }
-
                 .modal-header h2 {
                     font-size: 1rem;
                     font-weight: 800;
                     margin: 0;
                 }
-
                 .modal-close {
                     border: 0;
                     background: transparent;
@@ -537,29 +532,19 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     padding: 0.25rem;
                     border-radius: 0.5rem;
                 }
-
-                .modal-close:hover:not(:disabled) {
-                    background: rgba(107, 18, 48, 0.08);
-                }
-
-                .modal-close:disabled {
-                    opacity: 0.55;
-                    cursor: not-allowed;
-                }
-
+                .modal-close:hover:not(:disabled) { background: rgba(107,18,48,0.08); }
+                .modal-close:disabled { opacity: 0.55; cursor: not-allowed; }
                 .modal-message {
                     font-size: 0.9rem;
                     line-height: 1.5;
                     color: #6E6458;
                     margin-bottom: 1.25rem;
                 }
-
                 .modal-actions {
                     display: flex;
                     justify-content: flex-end;
                     gap: 0.75rem;
                 }
-
                 .modal-btn {
                     border: 0;
                     border-radius: 0.75rem;
@@ -568,48 +553,19 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     font-weight: 800;
                     cursor: pointer;
                 }
-
-                .modal-btn:disabled {
-                    opacity: 0.65;
-                    cursor: not-allowed;
-                }
-
-                .modal-btn-cancel {
-                    background: rgba(110, 100, 88, 0.12);
-                    color: #4B4038;
-                }
-
-                .modal-btn-primary {
-                    background: #6B1230;
-                    color: white;
-                }
-
-                .modal-btn-danger {
-                    background: #B91C1C;
-                    color: white;
-                }
+                .modal-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+                .modal-btn-cancel  { background: rgba(110,100,88,0.12); color: #4B4038; }
+                .modal-btn-primary { background: #6B1230; color: white; }
+                .modal-btn-danger  { background: #B91C1C; color: white; }
 
                 @media (prefers-color-scheme: dark) {
-                    .modal-card {
-                        background: #2B1620;
-                        color: #F4EEE9;
-                        border-color: rgba(255, 255, 255, 0.12);
-                    }
-
-                    .modal-message {
-                        color: #CFC4BA;
-                    }
-
-                    .modal-close {
-                        color: #CFC4BA;
-                    }
-
-                    .modal-btn-cancel {
-                        background: rgba(255, 255, 255, 0.1);
-                        color: #F4EEE9;
-                    }
+                    .modal-card       { background: #2B1620; color: #F4EEE9; border-color: rgba(255,255,255,0.12); }
+                    .modal-message    { color: #CFC4BA; }
+                    .modal-close      { color: #CFC4BA; }
+                    .modal-btn-cancel { background: rgba(255,255,255,0.1); color: #F4EEE9; }
                 }
 
+                /* ── Page ── */
                 .page-container {
                     width: 100%;
                     min-height: 100vh;
@@ -619,7 +575,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                         radial-gradient(circle at 0% 92%, rgba(107,18,48,0.14), transparent 36%),
                         linear-gradient(135deg, #FAF8F5 0%, #F5F0EA 42%, #F6EEDC 100%);
                 }
-
                 @media (prefers-color-scheme: dark) {
                     .page-container {
                         color: #F4EEE9;
@@ -636,12 +591,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     gap: 1.25rem;
                     width: 100%;
                 }
-
                 @media (min-width: 768px) {
-                    .shell-container {
-                        padding: 1.5rem;
-                        gap: 1.5rem;
-                    }
+                    .shell-container { padding: 1.5rem; gap: 1.5rem; }
                 }
 
                 .glass-card {
@@ -653,15 +604,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     box-shadow: 0 14px 34px rgba(107,18,48,0.08);
                     backdrop-filter: blur(10px);
                 }
-
-                .glass-card.is-filters {
-                    z-index: 40;
-                }
-
-                .glass-card.is-table {
-                    z-index: 1;
-                    overflow: hidden;
-                }
+                .glass-card.is-filters { z-index: 40; }
+                .glass-card.is-table   { z-index: 1; overflow: hidden; }
 
                 @media (prefers-color-scheme: dark) {
                     .glass-card {
@@ -681,11 +625,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     letter-spacing: 0.13em;
                     text-transform: uppercase;
                 }
-
                 @media (prefers-color-scheme: dark) {
-                    .eyebrow {
-                        color: #D6B96A;
-                    }
+                    .eyebrow { color: #D6B96A; }
                 }
 
                 .filter-label {
@@ -708,7 +649,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     color: #24151A;
                     outline: none;
                 }
-
                 @media (prefers-color-scheme: dark) {
                     .custom-select {
                         border-color: rgba(214,185,106,0.14);
@@ -731,11 +671,7 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     letter-spacing: 0.02em;
                     transition: all .15s;
                 }
-
-                .papelera-link:hover {
-                    background: rgba(107,18,48,0.08);
-                }
-
+                .papelera-link:hover { background: rgba(107,18,48,0.08); }
                 .papelera-link .badge {
                     display: inline-flex;
                     align-items: center;
@@ -749,23 +685,13 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     font-size: 0.62rem;
                     font-weight: 900;
                 }
-
                 @media (prefers-color-scheme: dark) {
-                    .papelera-link {
-                        border-color: rgba(214,185,106,0.28);
-                        color: #D6B96A;
-                    }
-
-                    .papelera-link:hover {
-                        background: rgba(214,185,106,0.10);
-                    }
-
-                    .papelera-link .badge {
-                        background: #D6B96A;
-                        color: #2B1620;
-                    }
+                    .papelera-link              { border-color: rgba(214,185,106,0.28); color: #D6B96A; }
+                    .papelera-link:hover        { background: rgba(214,185,106,0.10); }
+                    .papelera-link .badge       { background: #D6B96A; color: #2B1620; }
                 }
 
+                /* ── Estado chip — nowrap garantiza una sola linea ── */
                 .estado-dot {
                     display: inline-block;
                     width: 0.55rem;
@@ -774,7 +700,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     box-shadow: 0 0 0 3px rgba(255,255,255,0.6);
                     flex-shrink: 0;
                 }
-
                 .estado-chip {
                     display: inline-flex;
                     align-items: center;
@@ -785,18 +710,15 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     font-weight: 800;
                     letter-spacing: 0.02em;
                     border: 1px solid rgba(0,0,0,0.06);
+                    white-space: nowrap;
+                    width: max-content;
                 }
-
                 @media (prefers-color-scheme: dark) {
-                    .estado-dot {
-                        box-shadow: 0 0 0 3px rgba(255,255,255,0.08);
-                    }
-
-                    .estado-chip {
-                        border-color: rgba(255,255,255,0.10);
-                    }
+                    .estado-dot  { box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
+                    .estado-chip { border-color: rgba(255,255,255,0.10); }
                 }
 
+                /* ── Action buttons ── */
                 .action-btn {
                     display: inline-flex;
                     align-items: center;
@@ -810,44 +732,25 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     cursor: pointer;
                     transition: all .15s;
                 }
-
-                .action-btn:hover {
-                    background: rgba(107,18,48,0.08);
-                    color: #6B1230;
-                }
-
-                .action-btn.is-state:hover {
-                    color: #9A6C18;
-                    background: rgba(201,168,76,0.12);
-                }
-
-                .action-btn.is-delete:hover {
-                    color: #B91C1C;
-                    background: rgba(185,28,28,0.10);
-                }
-
+                .action-btn:hover              { background: rgba(107,18,48,0.08); color: #6B1230; }
+                .action-btn.is-state:hover     { color: #9A6C18; background: rgba(201,168,76,0.12); }
+                .action-btn.is-delete:hover    { color: #B91C1C; background: rgba(185,28,28,0.10); }
                 @media (prefers-color-scheme: dark) {
-                    .action-btn {
-                        color: #A8A094;
-                    }
-
-                    .action-btn:hover {
-                        background: rgba(214,185,106,0.12);
-                        color: #F4EEE9;
-                    }
+                    .action-btn       { color: #A8A094; }
+                    .action-btn:hover { background: rgba(214,185,106,0.12); color: #F4EEE9; }
                 }
 
+                /* ── State panel (portal) ── */
                 .state-backdrop {
                     position: fixed;
                     inset: 0;
-                    z-index: 9998;
-                    background: rgba(18, 7, 12, 0.42);
+                    z-index: 99998;
+                    background: rgba(18,7,12,0.42);
                     backdrop-filter: blur(2px);
                 }
-
                 .state-panel {
                     width: 230px;
-                    z-index: 9999;
+                    z-index: 99999;
                     border-radius: 0.85rem;
                     border: 1px solid rgba(107,18,48,0.18);
                     background: rgba(255,255,255,0.98);
@@ -855,7 +758,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     padding: 0.35rem;
                     backdrop-filter: blur(8px);
                 }
-
                 .state-panel.is-mobile {
                     position: fixed;
                     left: 1rem;
@@ -867,8 +769,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     overflow-y: auto;
                     border-radius: 1.15rem;
                     padding: 0.65rem;
+                    z-index: 99999;
                 }
-
                 @media (prefers-color-scheme: dark) {
                     .state-panel {
                         background: #2A141D;
@@ -876,7 +778,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                         box-shadow: 0 18px 40px rgba(0,0,0,0.5);
                     }
                 }
-
                 .state-panel-header {
                     display: flex;
                     align-items: flex-start;
@@ -884,7 +785,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     gap: 0.75rem;
                     padding: 0.35rem 0.45rem 0.55rem;
                 }
-
                 .state-panel-title {
                     font-size: 0.66rem;
                     font-weight: 900;
@@ -892,7 +792,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     text-transform: uppercase;
                     color: #9A8B7B;
                 }
-
                 .state-panel-subtitle {
                     max-width: 16rem;
                     margin-top: 0.15rem;
@@ -901,7 +800,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     font-weight: 800;
                     line-height: 1.2;
                 }
-
                 .state-panel-close {
                     display: inline-flex;
                     align-items: center;
@@ -912,8 +810,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     border-radius: 0.7rem;
                     background: rgba(107,18,48,0.08);
                     color: #6B1230;
+                    cursor: pointer;
                 }
-
                 .state-panel-item {
                     width: 100%;
                     display: flex;
@@ -930,40 +828,17 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     cursor: pointer;
                     transition: background .12s;
                 }
-
-                .state-panel.is-mobile .state-panel-item {
-                    padding: 0.8rem 0.75rem;
-                    font-size: 0.95rem;
-                }
-
-                .state-panel-item:hover:not(:disabled) {
-                    background: rgba(107,18,48,0.08);
-                }
-
-                .state-panel-item.is-current {
-                    opacity: 0.55;
-                    cursor: default;
-                }
-
+                .state-panel.is-mobile .state-panel-item { padding: 0.8rem 0.75rem; font-size: 0.95rem; }
+                .state-panel-item:hover:not(:disabled)    { background: rgba(107,18,48,0.08); }
+                .state-panel-item.is-current              { opacity: 0.55; cursor: default; }
                 @media (prefers-color-scheme: dark) {
-                    .state-panel-subtitle {
-                        color: #F4EEE9;
-                    }
-
-                    .state-panel-close {
-                        background: rgba(214,185,106,0.12);
-                        color: #D6B96A;
-                    }
-
-                    .state-panel-item:hover:not(:disabled) {
-                        background: rgba(214,185,106,0.12);
-                    }
+                    .state-panel-subtitle              { color: #F4EEE9; }
+                    .state-panel-close                 { background: rgba(214,185,106,0.12); color: #D6B96A; }
+                    .state-panel-item:hover:not(:disabled) { background: rgba(214,185,106,0.12); }
                 }
 
-                .combo-root {
-                    position: relative;
-                }
-
+                /* ── Combobox ── */
+                .combo-root { position: relative; }
                 .combo-trigger {
                     width: 100%;
                     min-height: 2.55rem;
@@ -980,52 +855,18 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     cursor: pointer;
                     transition: border-color .18s, background .18s, box-shadow .18s;
                 }
-
-                .combo-trigger:hover {
-                    border-color: rgba(107,18,48,0.28);
-                }
-
-                .combo-trigger:focus-visible {
-                    outline: none;
-                    border-color: #6B1230;
-                    box-shadow: 0 0 0 3px rgba(107,18,48,0.10);
-                }
-
+                .combo-trigger:hover         { border-color: rgba(107,18,48,0.28); }
+                .combo-trigger:focus-visible  { outline: none; border-color: #6B1230; box-shadow: 0 0 0 3px rgba(107,18,48,0.10); }
                 @media (prefers-color-scheme: dark) {
-                    .combo-trigger {
-                        border-color: rgba(214,185,106,0.14);
-                        background: #2B1620;
-                        color: #F4EEE9;
-                    }
-
-                    .combo-trigger:hover {
-                        border-color: rgba(214,185,106,0.32);
-                    }
+                    .combo-trigger       { border-color: rgba(214,185,106,0.14); background: #2B1620; color: #F4EEE9; }
+                    .combo-trigger:hover { border-color: rgba(214,185,106,0.32); }
                 }
-
-                .combo-text {
-                    color: inherit;
-                    font-weight: 600;
-                }
-
-                .combo-placeholder {
-                    color: #9A8B7B;
-                }
-
+                .combo-text        { color: inherit; font-weight: 600; }
+                .combo-placeholder { color: #9A8B7B; }
                 @media (prefers-color-scheme: dark) {
-                    .combo-placeholder {
-                        color: #A89889;
-                    }
+                    .combo-placeholder { color: #A89889; }
                 }
-
-                .combo-chev {
-                    margin-left: auto;
-                    height: 1rem;
-                    width: 1rem;
-                    opacity: 0.6;
-                    flex-shrink: 0;
-                }
-
+                .combo-chev { margin-left: auto; height: 1rem; width: 1rem; opacity: 0.6; flex-shrink: 0; }
                 .combo-panel {
                     position: absolute;
                     z-index: 100;
@@ -1039,15 +880,9 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     overflow: hidden;
                     backdrop-filter: blur(8px);
                 }
-
                 @media (prefers-color-scheme: dark) {
-                    .combo-panel {
-                        border-color: rgba(214,185,106,0.22);
-                        background: #2A141D;
-                        box-shadow: 0 16px 36px rgba(0,0,0,0.45);
-                    }
+                    .combo-panel { border-color: rgba(214,185,106,0.22); background: #2A141D; box-shadow: 0 16px 36px rgba(0,0,0,0.45); }
                 }
-
                 .combo-search {
                     display: flex;
                     align-items: center;
@@ -1056,42 +891,13 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     border-bottom: 1px solid rgba(107,18,48,0.10);
                     background: rgba(250,248,245,0.7);
                 }
-
                 @media (prefers-color-scheme: dark) {
-                    .combo-search {
-                        border-bottom-color: rgba(214,185,106,0.16);
-                        background: rgba(255,255,255,0.04);
-                    }
+                    .combo-search { border-bottom-color: rgba(214,185,106,0.16); background: rgba(255,255,255,0.04); }
                 }
-
-                .combo-search-input {
-                    flex: 1;
-                    background: transparent;
-                    border: none;
-                    outline: none;
-                    font-size: 0.85rem;
-                    color: inherit;
-                }
-
-                .combo-clear {
-                    background: transparent;
-                    border: none;
-                    cursor: pointer;
-                    color: inherit;
-                    opacity: 0.55;
-                    padding: 0.1rem;
-                }
-
-                .combo-clear:hover {
-                    opacity: 1;
-                }
-
-                .combo-list {
-                    max-height: 240px;
-                    overflow-y: auto;
-                    padding: 0.3rem;
-                }
-
+                .combo-search-input { flex: 1; background: transparent; border: none; outline: none; font-size: 0.85rem; color: inherit; }
+                .combo-clear { background: transparent; border: none; cursor: pointer; color: inherit; opacity: 0.55; padding: 0.1rem; }
+                .combo-clear:hover { opacity: 1; }
+                .combo-list  { max-height: 240px; overflow-y: auto; padding: 0.3rem; }
                 .combo-item {
                     width: 100%;
                     display: flex;
@@ -1108,38 +914,19 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                     cursor: pointer;
                     transition: background .12s;
                 }
-
-                .combo-item:hover {
-                    background: rgba(107,18,48,0.08);
-                }
-
-                .combo-item.is-selected {
-                    background: rgba(107,18,48,0.12);
-                    color: #6B1230;
-                    font-weight: 700;
-                }
-
+                .combo-item:hover       { background: rgba(107,18,48,0.08); }
+                .combo-item.is-selected { background: rgba(107,18,48,0.12); color: #6B1230; font-weight: 700; }
                 @media (prefers-color-scheme: dark) {
-                    .combo-item:hover {
-                        background: rgba(214,185,106,0.10);
-                    }
-
-                    .combo-item.is-selected {
-                        background: rgba(214,185,106,0.16);
-                        color: #F4EEE9;
-                    }
+                    .combo-item:hover       { background: rgba(214,185,106,0.10); }
+                    .combo-item.is-selected { background: rgba(214,185,106,0.16); color: #F4EEE9; }
                 }
-
-                .combo-empty {
-                    padding: 0.9rem;
-                    text-align: center;
-                    font-size: 0.82rem;
-                    color: #9A8B7B;
-                }
+                .combo-empty { padding: 0.9rem; text-align: center; font-size: 0.82rem; color: #9A8B7B; }
             `}</style>
 
             <div className="page-container">
                 <div className="shell-container">
+
+                    {/* Cabecera */}
                     <section className="glass-card">
                         <div className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div>
@@ -1147,11 +934,9 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                                     <FolderKanban className="h-4 w-4" />
                                     Gestion de Grado
                                 </div>
-
                                 <h1 className="text-3xl font-black tracking-tight mt-1">
                                     Repositorio de Proyectos
                                 </h1>
-
                                 <p className="text-sm text-[#6E6458] dark:text-[#A9978D] mt-1">
                                     Administracion y seguimiento de proyectos de grado activos.
                                 </p>
@@ -1161,7 +946,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                                 <Link href="/proyectos/papelera" className="papelera-link">
                                     <Trash2 className="h-3.5 w-3.5" />
                                     Papelera
-
                                     {eliminados_count !== undefined && eliminados_count > 0 && (
                                         <span className="badge">{eliminados_count}</span>
                                     )}
@@ -1180,6 +964,7 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                         </div>
                     </section>
 
+                    {/* Filtros */}
                     <section className="glass-card is-filters">
                         <div className="p-6">
                             <div className="eyebrow mb-4">
@@ -1190,10 +975,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                                 <div className="md:col-span-4 space-y-1.5">
                                     <label className="filter-label">Busqueda general</label>
-
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-40 pointer-events-none z-10" />
-
                                         <input
                                             type="text"
                                             placeholder="Titulo del proyecto..."
@@ -1207,10 +990,8 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
 
                                 <div className="md:col-span-4 space-y-1.5">
                                     <label className="filter-label">Estudiante</label>
-
                                     <div className="relative">
                                         <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-40 pointer-events-none z-10" />
-
                                         <input
                                             type="text"
                                             placeholder="Nombre del estudiante..."
@@ -1224,7 +1005,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
 
                                 <div className="md:col-span-4 space-y-1.5">
                                     <label className="filter-label">Periodo</label>
-
                                     <SearchableCombobox
                                         options={[
                                             { id: '', label: 'Todos los periodos' },
@@ -1239,7 +1019,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
 
                                 <div className="md:col-span-4 space-y-1.5">
                                     <label className="filter-label">Tutor</label>
-
                                     <SearchableCombobox
                                         options={[
                                             { id: '', label: 'Todos los tutores' },
@@ -1254,7 +1033,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
 
                                 <div className="md:col-span-4 space-y-1.5">
                                     <label className="filter-label">Estado</label>
-
                                     <SearchableCombobox
                                         options={[
                                             { id: '', label: 'Todos los estados' },
@@ -1279,7 +1057,6 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                                                 estudiante_buscar: '',
                                                 estado: '',
                                             };
-
                                             setValues(reset);
                                             handleFilter(reset);
                                         }}
@@ -1292,6 +1069,7 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                         </div>
                     </section>
 
+                    {/* Tabla */}
                     <section className="glass-card is-table">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm">
@@ -1387,7 +1165,7 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                                                             <button
                                                                 type="button"
                                                                 className="action-btn is-delete"
-                                                                onClick={() => eliminar(p)}
+                                                                onClick={() => setDeleteTarget(p)}
                                                                 title="Eliminar"
                                                                 aria-label="Eliminar"
                                                             >
@@ -1403,6 +1181,7 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                             </table>
                         </div>
                     </section>
+
                 </div>
             </div>
         </>

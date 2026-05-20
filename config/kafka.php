@@ -12,5 +12,10 @@ return [
             'KAFKA_TOPIC_PROYECTO_REGISTRADO',
             'proyectos.registrados'
         ),
+
+        'proyecto_estado_actualizado' => env(
+            'KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO',
+            'proyectos.estado_actualizado'
+        ),
     ],
 ];

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Proyecto;
 use App\Models\User;
 use App\Models\PeriodoAcademico;
+use App\Services\KafkaProducerService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Carbon\Carbon;
+use Throwable;
 
 class ProyectoController extends Controller
 {
@@ -342,9 +344,10 @@ class ProyectoController extends Controller
             'estado' => ['required', 'string', 'in:' . implode(',', self::ESTADOS_VALIDOS)],
         ]);
 
+        $estadoAnterior = $proyecto->estado;
         $nuevoEstado = $validated['estado'];
 
-        if ($proyecto->estado === $nuevoEstado) {
+        if ($estadoAnterior === $nuevoEstado) {
             return back()->with('toast', [
                 'type'    => 'info',
                 'message' => 'El proyecto ya estaba en ese estado.',
@@ -357,6 +360,93 @@ class ProyectoController extends Controller
             DB::statement("SET LOCAL app.user_id = '{$userId}'");
             $proyecto->update(['estado' => $nuevoEstado]);
         });
+
+        try {
+            $proyectoCompleto = Proyecto::query()
+                ->with([
+                    'periodo:id,nombre,fecha_inicio,fecha_cierre',
+                    'estudiante:id,name,email',
+                    'tutor:id,name,email',
+                ])
+                ->findOrFail($proyecto->id);
+
+            $revisores = DB::table('proyecto_revisores')
+                ->join('users', 'users.id', '=', 'proyecto_revisores.revisor_id')
+                ->where('proyecto_revisores.proyecto_id', $proyecto->id)
+                ->select([
+                    'users.id',
+                    'users.name',
+                    'users.email',
+                    'proyecto_revisores.asignado_en',
+                ])
+                ->orderBy('users.name')
+                ->get()
+                ->map(fn ($revisor) => [
+                    'id' => (int) $revisor->id,
+                    'nombre' => $revisor->name,
+                    'email' => $revisor->email,
+                    'asignado_en' => $revisor->asignado_en,
+                ])
+                ->values()
+                ->all();
+
+            $usuario = Auth::user();
+
+            app(KafkaProducerService::class)->publish(
+                config('kafka.topics.proyecto_estado_actualizado'),
+                [
+                    'event' => 'proyecto.estado_actualizado',
+                    'version' => 1,
+                    'occurred_at' => now()->toISOString(),
+                    'producer' => [
+                        'service' => 'proyectos-academicos-monolith',
+                        'module' => 'proyectos',
+                    ],
+                    'data' => [
+                        'id' => (int) $proyectoCompleto->id,
+                        'codigo' => $proyectoCompleto->codigo,
+                        'titulo' => $proyectoCompleto->titulo,
+                        'descripcion' => $proyectoCompleto->descripcion,
+                        'modalidad' => $proyectoCompleto->modalidad,
+                        'area_tematica' => $proyectoCompleto->area_tematica,
+                        'estado' => $proyectoCompleto->estado,
+                        'estado_anterior' => $estadoAnterior,
+                        'estado_nuevo' => $nuevoEstado,
+
+                        'periodo' => $proyectoCompleto->periodo ? [
+                            'id' => (int) $proyectoCompleto->periodo->id,
+                            'nombre' => $proyectoCompleto->periodo->nombre,
+                            'fecha_inicio' => $proyectoCompleto->periodo->fecha_inicio,
+                            'fecha_cierre' => $proyectoCompleto->periodo->fecha_cierre,
+                        ] : null,
+
+                        'estudiante' => $proyectoCompleto->estudiante ? [
+                            'id' => (int) $proyectoCompleto->estudiante->id,
+                            'nombre' => $proyectoCompleto->estudiante->name,
+                            'email' => $proyectoCompleto->estudiante->email,
+                        ] : null,
+
+                        'tutor' => $proyectoCompleto->tutor ? [
+                            'id' => (int) $proyectoCompleto->tutor->id,
+                            'nombre' => $proyectoCompleto->tutor->name,
+                            'email' => $proyectoCompleto->tutor->email,
+                        ] : null,
+
+                        'revisores' => $revisores,
+
+                        'actualizado_por' => $usuario ? [
+                            'id' => (int) $usuario->id,
+                            'nombre' => $usuario->name,
+                            'email' => $usuario->email,
+                            'rol' => $usuario->rol,
+                        ] : null,
+                    ],
+                ],
+                (string) $proyectoCompleto->id
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
 
         return back()->with('toast', [
             'type'    => 'success',
