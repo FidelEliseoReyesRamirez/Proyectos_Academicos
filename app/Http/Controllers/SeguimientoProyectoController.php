@@ -3,10 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Models\Proyecto;
+use App\Models\ProyectoArchivo;
+use App\Models\ProyectoEntrega;
+use App\Models\ProyectoEvento;
+use App\Models\ProyectoRevision;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
+use App\Services\KafkaProducerService;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -84,6 +93,7 @@ class SeguimientoProyectoController extends Controller
             'estudiante:id,name,email,rol',
             'tutor:id,name,email,rol',
             'revisores:id,name,email,rol',
+            'documentoTrabajoActualizadoPor:id,name,email,rol',
             'entregas' => fn ($query) => $query->orderByDesc('numero_version'),
             'entregas.archivos' => fn ($query) => $query->orderByDesc('created_at'),
             'entregas.archivos.subidoPor:id,name,email,rol',
@@ -116,6 +126,289 @@ class SeguimientoProyectoController extends Controller
                 ],
             ],
         ]);
+    }
+
+    public function storeEntrega(Request $request, Proyecto $proyecto): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless(
+            $rol === 'estudiante' && (int) $proyecto->estudiante_id === (int) $usuario->id,
+            403
+        );
+
+        $validated = $request->validate([
+            'titulo' => ['required', 'string', 'max:255'],
+            'descripcion' => ['nullable', 'string', 'max:3000'],
+            'archivo' => [
+                'required',
+                'file',
+                'max:204800',
+                'mimes:doc,docx,pdf',
+            ],
+        ]);
+
+        $archivo = $request->file('archivo');
+
+        $proyecto->loadMissing([
+            'estudiante:id,name,email,rol',
+            'tutor:id,name,email,rol',
+            'revisores:id,name,email,rol',
+        ]);
+
+        $eventoKafka = DB::transaction(function () use ($validated, $archivo, $proyecto, $usuario): array {
+            $siguienteVersion = ((int) ProyectoEntrega::query()
+                ->where('proyecto_id', $proyecto->id)
+                ->max('numero_version')) + 1;
+
+            $entrega = ProyectoEntrega::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'estudiante_id' => (int) $usuario->id,
+                'titulo' => $validated['titulo'],
+                'descripcion' => $validated['descripcion'] ?? null,
+                'numero_version' => $siguienteVersion,
+                'estado' => 'enviado',
+                'enviado_at' => now(),
+            ]);
+
+            $nombreOriginal = $archivo->getClientOriginalName();
+            $extension = $archivo->getClientOriginalExtension();
+            $nombreServidor = 'entrega_' . $entrega->id . '_' . Str::uuid() . '.' . $extension;
+            $directorio = 'proyectos/' . $proyecto->id . '/entregas/' . $entrega->id;
+
+            $ruta = $archivo->storeAs($directorio, $nombreServidor, 'local');
+
+            $archivoRegistro = ProyectoArchivo::create([
+                'entrega_id' => (int) $entrega->id,
+                'proyecto_id' => (int) $proyecto->id,
+                'subido_por_id' => (int) $usuario->id,
+                'tipo_archivo' => 'avance_estudiante',
+                'nombre_original' => $nombreOriginal,
+                'nombre_servidor' => $nombreServidor,
+                'ruta_almacenamiento' => $ruta,
+                'mime_type' => $archivo->getClientMimeType(),
+                'tamano_bytes' => $archivo->getSize(),
+            ]);
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'entrega_subida',
+                'descripcion' => 'El estudiante subió la entrega versión ' . $siguienteVersion . ': ' . $entrega->titulo,
+                'metadata' => [
+                    'entrega_id' => (int) $entrega->id,
+                    'numero_version' => $siguienteVersion,
+                    'titulo' => $entrega->titulo,
+                    'archivo_original' => $nombreOriginal,
+                ],
+            ]);
+
+            return [
+                'event_id' => (string) Str::uuid(),
+                'event' => 'proyecto.entrega_subida',
+                'module' => 'Seguimiento',
+                'aggregate_type' => 'proyecto',
+                'aggregate_id' => (int) $proyecto->id,
+                'occurred_at' => now()->toISOString(),
+                'data' => [
+                    'proyecto' => [
+                        'id' => (int) $proyecto->id,
+                        'codigo' => $proyecto->codigo,
+                        'titulo' => $proyecto->titulo,
+                        'estado' => (string) $proyecto->estado,
+                    ],
+                    'entrega' => [
+                        'id' => (int) $entrega->id,
+                        'titulo' => $entrega->titulo,
+                        'descripcion' => $entrega->descripcion,
+                        'numero_version' => (int) $entrega->numero_version,
+                        'estado' => $entrega->estado,
+                        'enviado_at' => optional($entrega->enviado_at)->toISOString(),
+                    ],
+                    'archivo' => [
+                        'id' => (int) $archivoRegistro->id,
+                        'nombre_original' => $archivoRegistro->nombre_original,
+                        'mime_type' => $archivoRegistro->mime_type,
+                        'tamano_bytes' => $archivoRegistro->tamano_bytes,
+                    ],
+                    'estudiante' => [
+                        'id' => (int) $usuario->id,
+                        'nombre' => $usuario->name,
+                        'email' => $usuario->email,
+                    ],
+                    'tutor' => $proyecto->tutor ? [
+                        'id' => (int) $proyecto->tutor->id,
+                        'nombre' => $proyecto->tutor->name,
+                        'email' => $proyecto->tutor->email,
+                    ] : null,
+                    'revisores' => $proyecto->revisores->map(fn ($revisor) => [
+                        'id' => (int) $revisor->id,
+                        'nombre' => $revisor->name,
+                        'email' => $revisor->email,
+                    ])->values()->all(),
+                ],
+            ];
+        });
+
+        try {
+            app(KafkaProducerService::class)->publish(
+                'proyectos.entregas',
+                $eventoKafka,
+                'proyecto-' . $proyecto->id
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('No se pudo publicar proyecto.entrega_subida en Kafka.', [
+                'proyecto_id' => $proyecto->id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Entrega subida correctamente.',
+            ]);
+    }
+
+    public function updateDocumentoTrabajo(Request $request, Proyecto $proyecto): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless($this->puedeVerProyecto($proyecto, (int) $usuario->id, $rol), 403);
+
+        $validated = $request->validate([
+            'documento_trabajo_titulo' => ['nullable', 'string', 'max:255'],
+            'documento_trabajo_url' => ['nullable', 'url', 'max:2048'],
+        ]);
+
+        $titulo = trim((string) ($validated['documento_trabajo_titulo'] ?? ''));
+        $url = trim((string) ($validated['documento_trabajo_url'] ?? ''));
+
+        if ($titulo === '' && $url === '') {
+            return back()->withErrors([
+                'documento_trabajo_url' => 'Debes registrar al menos un título o un enlace del documento de trabajo.',
+            ]);
+        }
+
+        DB::transaction(function () use ($proyecto, $usuario, $titulo, $url): void {
+            $proyecto->forceFill([
+                'documento_trabajo_titulo' => $titulo !== '' ? $titulo : null,
+                'documento_trabajo_url' => $url !== '' ? $url : null,
+                'documento_trabajo_actualizado_por_id' => (int) $usuario->id,
+                'documento_trabajo_actualizado_at' => now(),
+            ])->save();
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'documento_trabajo_actualizado',
+                'descripcion' => 'Se actualizó el documento de trabajo activo del proyecto.',
+                'metadata' => [
+                    'titulo' => $titulo,
+                    'url' => $url,
+                ],
+            ]);
+        });
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Documento de trabajo actualizado correctamente.',
+            ]);
+    }
+
+    public function storeArchivoRevision(Request $request, Proyecto $proyecto): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless(
+            in_array($rol, ['docente', 'coordinador', 'admin'], true)
+                && $this->puedeVerProyecto($proyecto, (int) $usuario->id, $rol),
+            403
+        );
+
+        $validated = $request->validate([
+            'entrega_id' => ['required', 'integer', 'exists:proyecto_entregas,id'],
+            'resultado' => ['required', 'string', 'in:observado,aprobado,rechazado,requiere_correcciones'],
+            'comentario' => ['nullable', 'string', 'max:5000'],
+            'archivo' => [
+                'required',
+                'file',
+                'max:204800',
+                'mimes:doc,docx,pdf',
+            ],
+        ]);
+
+        $entrega = ProyectoEntrega::query()
+            ->where('id', $validated['entrega_id'])
+            ->where('proyecto_id', $proyecto->id)
+            ->firstOrFail();
+
+        $archivo = $request->file('archivo');
+
+        DB::transaction(function () use ($validated, $archivo, $proyecto, $entrega, $usuario, $rol): void {
+            $rolRevision = 'coordinador';
+
+            if ($rol === 'docente') {
+                $rolRevision = (int) $proyecto->tutor_id === (int) $usuario->id
+                    ? 'tutor'
+                    : 'revisor';
+            }
+
+            $revision = ProyectoRevision::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'entrega_id' => (int) $entrega->id,
+                'revisor_id' => (int) $usuario->id,
+                'rol_revision' => $rolRevision,
+                'resultado' => $validated['resultado'],
+                'comentario' => $validated['comentario'] ?? null,
+            ]);
+
+            $nombreOriginal = $archivo->getClientOriginalName();
+            $extension = $archivo->getClientOriginalExtension();
+            $nombreServidor = 'revision_' . $revision->id . '_' . Str::uuid() . '.' . $extension;
+            $directorio = 'proyectos/' . $proyecto->id . '/entregas/' . $entrega->id . '/revisiones';
+
+            $ruta = $archivo->storeAs($directorio, $nombreServidor, 'local');
+
+            ProyectoArchivo::create([
+                'entrega_id' => (int) $entrega->id,
+                'proyecto_id' => (int) $proyecto->id,
+                'subido_por_id' => (int) $usuario->id,
+                'tipo_archivo' => 'documento_revisado',
+                'nombre_original' => $nombreOriginal,
+                'nombre_servidor' => $nombreServidor,
+                'ruta_almacenamiento' => $ruta,
+                'mime_type' => $archivo->getClientMimeType(),
+                'tamano_bytes' => $archivo->getSize(),
+            ]);
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'archivo_revision_devuelto',
+                'descripcion' => ucfirst($rolRevision) . ' devolvió un archivo revisado para la entrega versión ' . $entrega->numero_version . '.',
+                'metadata' => [
+                    'entrega_id' => (int) $entrega->id,
+                    'revision_id' => (int) $revision->id,
+                    'rol_revision' => $rolRevision,
+                    'resultado' => $validated['resultado'],
+                    'archivo_original' => $nombreOriginal,
+                ],
+            ]);
+        });
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Archivo revisado devuelto correctamente.',
+            ]);
     }
 
     private function proyectosVisiblesQuery(int $usuarioId, string $rol): Builder
@@ -177,6 +470,12 @@ class SeguimientoProyectoController extends Controller
             'modalidad' => (string) $proyecto->modalidad,
             'area_tematica' => $proyecto->area_tematica,
             'updated_at' => $proyecto->updated_at,
+            'documento_trabajo' => [
+                'titulo' => $proyecto->documento_trabajo_titulo,
+                'url' => $proyecto->documento_trabajo_url,
+                'actualizado_at' => $proyecto->documento_trabajo_actualizado_at,
+                'actualizado_por' => $this->mapUsuario($proyecto->documentoTrabajoActualizadoPor),
+            ],
             'estudiante' => $this->mapUsuario($proyecto->estudiante),
             'tutor' => $this->mapUsuario($proyecto->tutor),
             'revisores' => $proyecto->revisores->map(fn ($u) => $this->mapUsuario($u))->values(),
@@ -200,6 +499,12 @@ class SeguimientoProyectoController extends Controller
             'area_tematica' => $proyecto->area_tematica,
             'created_at' => $proyecto->created_at,
             'updated_at' => $proyecto->updated_at,
+            'documento_trabajo' => [
+                'titulo' => $proyecto->documento_trabajo_titulo,
+                'url' => $proyecto->documento_trabajo_url,
+                'actualizado_at' => $proyecto->documento_trabajo_actualizado_at,
+                'actualizado_por' => $this->mapUsuario($proyecto->documentoTrabajoActualizadoPor),
+            ],
             'estudiante' => $this->mapUsuario($proyecto->estudiante),
             'tutor' => $this->mapUsuario($proyecto->tutor),
             'revisores' => $proyecto->revisores->map(fn ($u) => $this->mapUsuario($u))->values(),

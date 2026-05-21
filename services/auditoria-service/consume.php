@@ -10,6 +10,7 @@ $groupId = getenv('KAFKA_GROUP_ID') ?: 'sudosquad-auditoria-service';
 $topicProyectoActualizado = getenv('KAFKA_TOPIC_PROYECTO_ACTUALIZADO') ?: 'proyectos.actualizados';
 $topicProyectoEliminado = getenv('KAFKA_TOPIC_PROYECTO_ELIMINADO') ?: 'proyectos.eliminados';
 $topicProyectoRestaurado = getenv('KAFKA_TOPIC_PROYECTO_RESTAURADO') ?: 'proyectos.restaurados';
+$topicProyectoEntregas = getenv('KAFKA_TOPIC_PROYECTO_ENTREGAS') ?: 'proyectos.entregas';
 $topicUsuariosEventos = getenv('KAFKA_TOPIC_USUARIOS_EVENTOS') ?: 'usuarios.eventos';
 $topicAuthEventos = getenv('KAFKA_TOPIC_AUTH_EVENTOS') ?: 'auth.eventos';
 
@@ -23,6 +24,7 @@ $topics = [
     $topicProyectoActualizado,
     $topicProyectoEliminado,
     $topicProyectoRestaurado,
+    $topicProyectoEntregas,
     $topicUsuariosEventos,
     $topicAuthEventos,
 ];
@@ -88,6 +90,7 @@ function procesarMensaje(?string $rawPayload): void
         'proyecto.actualizado' => procesarProyectoActualizado($payload),
         'proyecto.eliminado' => procesarProyectoEliminado($payload),
         'proyecto.restaurado' => procesarProyectoRestaurado($payload),
+        'proyecto.entrega_subida' => procesarProyectoEntregaSubida($payload),
 
         'usuario.creado',
         'usuario.actualizado',
@@ -169,6 +172,33 @@ function procesarProyectoRestaurado(array $payload): void
     echo "Restaurado por: {$base['usuario']} ({$base['rol']})\n";
     echo "Fecha restauración: {$restoredAt}\n";
     echo "Auditoria registrada en logs.\n";
+    echo "========================================\n\n";
+}
+
+function procesarProyectoEntregaSubida(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $entrega = $data['entrega'] ?? [];
+    $archivo = $data['archivo'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $tituloEntrega = $entrega['titulo'] ?? 'Sin título de entrega';
+    $version = $entrega['numero_version'] ?? 'N/D';
+    $estudianteNombre = $estudiante['nombre'] ?? 'Estudiante no definido';
+    $estudianteEmail = $estudiante['email'] ?? 'sin correo';
+    $archivoNombre = $archivo['nombre_original'] ?? 'archivo no definido';
+
+    echo "\n========================================\n";
+    echo "Evento recibido: proyecto.entrega_subida\n";
+    echo "Proyecto: {$codigo} - {$tituloProyecto}\n";
+    echo "Entrega: versión {$version} - {$tituloEntrega}\n";
+    echo "Estudiante: {$estudianteNombre} <{$estudianteEmail}>\n";
+    echo "Archivo: {$archivoNombre}\n";
+    echo "Auditoria de entrega registrada en audit_events.\n";
     echo "========================================\n\n";
 }
 
@@ -278,7 +308,7 @@ function guardarEventoAuditoria(array $payload, string $rawPayload): bool
         $tipo = tipoAgregado($event);
         $actor = actorEvento($event, $data);
         $target = targetEvento($event, $data);
-        $aggregateId = aggregateIdEvento($event, $data);
+        $aggregateId = isset($payload['aggregate_id']) ? (string) $payload['aggregate_id'] : aggregateIdEvento($event, $data);
         $descripcion = descripcionEvento($event, $data);
 
         $stmt = conexionAuditoria()->prepare(
@@ -323,7 +353,7 @@ function guardarEventoAuditoria(array $payload, string $rawPayload): bool
         $stmt->execute([
             'event_id' => $eventId,
             'event' => $event,
-            'module' => $producer['module'] ?? null,
+            'module' => $payload['module'] ?? ($producer['module'] ?? null),
             'aggregate_type' => $tipo,
             'aggregate_id' => $aggregateId,
             'actor_id' => $actor['id'] ?? null,
@@ -374,6 +404,14 @@ function aggregateIdEvento(?string $event, array $data): ?string
         return null;
     }
 
+    if ($event === 'proyecto.entrega_subida') {
+        $proyecto = $data['proyecto'] ?? null;
+
+        if (is_array($proyecto) && isset($proyecto['id'])) {
+            return (string) $proyecto['id'];
+        }
+    }
+
     if (str_starts_with($event, 'auth.')) {
         $usuario = $data['usuario'] ?? null;
 
@@ -389,6 +427,21 @@ function aggregateIdEvento(?string $event, array $data): ?string
 
 function actorEvento(?string $event, array $data): array
 {
+    if ($event === 'proyecto.entrega_subida') {
+        $estudiante = $data['estudiante'] ?? null;
+
+        if (is_array($estudiante)) {
+            return [
+                'id' => $estudiante['id'] ?? null,
+                'nombre' => $estudiante['nombre'] ?? null,
+                'email' => $estudiante['email'] ?? null,
+                'rol' => $estudiante['rol'] ?? 'estudiante',
+            ];
+        }
+
+        return [];
+    }
+
     if ($event && str_starts_with($event, 'usuario.')) {
         $actor = $data['usuario_accion'] ?? null;
 
@@ -408,6 +461,15 @@ function actorEvento(?string $event, array $data): array
 
 function targetEvento(?string $event, array $data): array
 {
+    if ($event === 'proyecto.entrega_subida') {
+        $proyecto = $data['proyecto'] ?? [];
+
+        return [
+            'nombre' => is_array($proyecto) ? ($proyecto['titulo'] ?? null) : null,
+            'email' => null,
+        ];
+    }
+
     if ($event && str_starts_with($event, 'proyecto.')) {
         return [
             'nombre' => $data['titulo'] ?? null,
@@ -438,6 +500,16 @@ function descripcionEvento(?string $event, array $data): string
 {
     if (isset($data['descripcion'])) {
         return (string) $data['descripcion'];
+    }
+
+    if ($event === 'proyecto.entrega_subida') {
+        $entrega = $data['entrega'] ?? [];
+        $proyecto = $data['proyecto'] ?? [];
+        $version = is_array($entrega) ? ($entrega['numero_version'] ?? 'N/D') : 'N/D';
+        $tituloEntrega = is_array($entrega) ? ($entrega['titulo'] ?? 'Sin título') : 'Sin título';
+        $tituloProyecto = is_array($proyecto) ? ($proyecto['titulo'] ?? 'Sin proyecto') : 'Sin proyecto';
+
+        return "Entrega subida: versión {$version} - {$tituloEntrega}. Proyecto: {$tituloProyecto}.";
     }
 
     return match ($event) {

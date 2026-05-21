@@ -18,6 +18,10 @@ class Proyecto extends Model
         'codigo',
         'titulo',
         'descripcion',
+        'documento_trabajo_titulo',
+        'documento_trabajo_url',
+        'documento_trabajo_actualizado_por_id',
+        'documento_trabajo_actualizado_at',
         'modalidad',
         'area_tematica',
         'estado',
@@ -33,6 +37,7 @@ class Proyecto extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
             'deleted_at' => 'datetime',
+            'documento_trabajo_actualizado_at' => 'datetime',
         ];
     }
 
@@ -49,6 +54,11 @@ class Proyecto extends Model
     public function tutor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'tutor_id');
+    }
+
+    public function documentoTrabajoActualizadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'documento_trabajo_actualizado_por_id');
     }
 
     public function revisores(): BelongsToMany

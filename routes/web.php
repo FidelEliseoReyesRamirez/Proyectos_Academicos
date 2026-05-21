@@ -40,6 +40,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('seguimiento/{proyecto}', [SeguimientoProyectoController::class, 'show'])
             ->whereNumber('proyecto')
             ->name('seguimiento.show');
+
+        Route::post('seguimiento/{proyecto}/entregas', [SeguimientoProyectoController::class, 'storeEntrega'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.entregas.store');
+
+        Route::patch('seguimiento/{proyecto}/documento-trabajo', [SeguimientoProyectoController::class, 'updateDocumentoTrabajo'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.documento-trabajo.update');
+
+        Route::post('seguimiento/{proyecto}/archivo-revision', [SeguimientoProyectoController::class, 'storeArchivoRevision'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.archivo-revision.store');
     });
 
 

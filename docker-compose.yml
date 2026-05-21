@@ -125,6 +125,7 @@ services:
       - "8000:8000"
     volumes:
       - .:/var/www/html
+      - ./docker/php/99-uploads.ini:/usr/local/etc/php/conf.d/99-uploads.ini:ro
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -142,11 +143,20 @@ services:
       KAFKA_GROUP_ID: sudosquad-notifications
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
       KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO: proyectos.estado_actualizado
+      KAFKA_TOPIC_PROYECTO_ENTREGAS: proyectos.entregas
       KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
       KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Seguimiento de Proyectos Académicos}
 
       AUDITORIA_API_URL: http://sudosquad_auditoria_api:8081
     depends_on:
@@ -184,11 +194,20 @@ services:
       KAFKA_GROUP_ID: sudosquad-notificaciones-service
       KAFKA_TOPIC_PROYECTO_REGISTRADO: proyectos.registrados
       KAFKA_TOPIC_PROYECTO_ESTADO_ACTUALIZADO: proyectos.estado_actualizado
+      KAFKA_TOPIC_PROYECTO_ENTREGAS: proyectos.entregas
       KAFKA_TOPIC_PROYECTO_ACTUALIZADO: proyectos.actualizados
       KAFKA_TOPIC_PROYECTO_ELIMINADO: proyectos.eliminados
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Seguimiento de Proyectos Académicos}
 
       AUDITORIA_API_URL: http://sudosquad_auditoria_api:8081
 
@@ -221,6 +240,14 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENCRYPTION: ${MAIL_ENCRYPTION:-tls}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-no-reply@example.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Seguimiento de Proyectos Académicos}
 
       AUDITORIA_API_URL: http://sudosquad_auditoria_api:8081
 
