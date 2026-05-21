@@ -6,6 +6,7 @@ import {
     BookOpenCheck,
     CalendarClock,
     CheckCircle2,
+    Download,
     ExternalLink,
     FileCheck2,
     FileText,
@@ -1103,6 +1104,45 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                     color: var(--muted);
                 }
 
+                .file-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.42rem;
+                    margin-top: 0.45rem;
+                }
+
+                .download-link {
+                    display: inline-flex;
+                    width: fit-content;
+                    align-items: center;
+                    gap: 0.32rem;
+                    border: 1px solid var(--border);
+                    border-radius: 0.72rem;
+                    background: var(--guindo-soft);
+                    color: var(--guindo);
+                    padding: 0.36rem 0.52rem;
+                    font-size: 0.72rem;
+                    font-weight: 950;
+                    text-decoration: none;
+                    transition:
+                        transform 0.16s ease,
+                        background 0.16s ease,
+                        border-color 0.16s ease,
+                        box-shadow 0.16s ease;
+                }
+
+                .download-link:hover {
+                    transform: translateY(-1px);
+                    border-color: var(--border-strong);
+                    background: color-mix(in srgb, var(--guindo) 17%, transparent);
+                    box-shadow: var(--shadow-soft);
+                }
+
+                .download-link.is-review {
+                    background: var(--success-soft);
+                    color: var(--success);
+                }
+
                 @media (prefers-reduced-motion: reduce) {
                     .shell,
                     .timeline-node,
@@ -1469,6 +1509,16 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                                                                 <span>
                                                                     {label(archivo.tipo_archivo)} · {formatBytes(archivo.tamano_bytes)} · {formatDate(archivo.created_at)}
                                                                 </span>
+
+                                                                <div className="file-actions">
+                                                                    <a
+                                                                        className="download-link"
+                                                                        href={`/seguimiento/${proyecto.id}/archivos/${archivo.id}/descargar`}
+                                                                    >
+                                                                        <Download className="h-3.5 w-3.5" />
+                                                                        Descargar
+                                                                    </a>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1487,6 +1537,16 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                                                                 <span>
                                                                     Devuelto por {archivo.subido_por?.name || 'usuario no identificado'} · {formatBytes(archivo.tamano_bytes)} · {formatDate(archivo.created_at)}
                                                                 </span>
+
+                                                                <div className="file-actions">
+                                                                    <a
+                                                                        className="download-link is-review"
+                                                                        href={`/seguimiento/${proyecto.id}/archivos/${archivo.id}/descargar`}
+                                                                    >
+                                                                        <Download className="h-3.5 w-3.5" />
+                                                                        Descargar revisión
+                                                                    </a>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     ))}

@@ -52,6 +52,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('seguimiento/{proyecto}/archivo-revision', [SeguimientoProyectoController::class, 'storeArchivoRevision'])
             ->whereNumber('proyecto')
             ->name('seguimiento.archivo-revision.store');
+
+        Route::get('seguimiento/{proyecto}/archivos/{archivo}/descargar', [SeguimientoProyectoController::class, 'downloadArchivo'])
+            ->whereNumber(['proyecto', 'archivo'])
+            ->name('seguimiento.archivos.download');
     });
 
 

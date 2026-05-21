@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 use App\Services\KafkaProducerService;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -409,6 +410,23 @@ class SeguimientoProyectoController extends Controller
                 'type' => 'success',
                 'message' => 'Archivo revisado devuelto correctamente.',
             ]);
+    }
+
+    public function downloadArchivo(Request $request, Proyecto $proyecto, ProyectoArchivo $archivo): StreamedResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless($this->puedeVerProyecto($proyecto, (int) $usuario->id, $rol), 403);
+
+        abort_unless((int) $archivo->proyecto_id === (int) $proyecto->id, 404);
+
+        abort_unless(Storage::disk('local')->exists($archivo->ruta_almacenamiento), 404);
+
+        return Storage::disk('local')->download(
+            $archivo->ruta_almacenamiento,
+            $archivo->nombre_original
+        );
     }
 
     private function proyectosVisiblesQuery(int $usuarioId, string $rol): Builder
