@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuditoriaController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodoAcademicoController;
 use App\Http\Controllers\ProyectoController;
 use App\Http\Controllers\UsuariosController;
@@ -24,7 +25,7 @@ Route::inertia('/', 'welcome', [
 */
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::middleware(['role:coordinador,admin'])->group(function () {
         Route::get('auditoria', [AuditoriaController::class, 'index'])->name('auditoria.index');
@@ -35,11 +36,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Rutas protegidas solo para coordinador
+    | Rutas protegidas para coordinador y admin
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['role:coordinador'])->group(function () {
+    Route::middleware(['role:coordinador,admin'])->group(function () {
 
         /*
         |--------------------------------------------------------------------------

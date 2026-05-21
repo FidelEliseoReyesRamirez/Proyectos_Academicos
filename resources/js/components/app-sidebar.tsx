@@ -37,7 +37,7 @@ export function AppSidebar() {
     const userRole = String(user?.rol ?? user?.role ?? '').toLowerCase();
     
 
-    // 1. Elementos base para TODOS los roles (Estudiantes, Tutores, Coordinadores)
+    // 1. Elementos base para todos los roles
     const mainNavItems: NavItem[] = [
         {
             title: 'Dashboard',
@@ -49,7 +49,7 @@ export function AppSidebar() {
     const puedeVerAuditoria = ['coordinador', 'admin'].includes(userRole);
 
     // 2. Elementos administrativos
-    if (userRole === 'coordinador') {
+    if (['coordinador', 'admin'].includes(userRole)) {
         mainNavItems.push(
             {
                 title: 'Usuarios',

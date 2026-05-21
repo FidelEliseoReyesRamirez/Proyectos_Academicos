@@ -18,8 +18,7 @@ class UsuariosController extends Controller
 {
     private const ROLES = [
         'estudiante',
-        'tutor',
-        'revisor',
+        'docente',
         'coordinador',
         'admin',
     ];

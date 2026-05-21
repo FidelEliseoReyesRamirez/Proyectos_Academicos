@@ -1,5 +1,22 @@
-import { Head, usePage } from '@inertiajs/react';
-import { dashboard } from '@/routes';
+import { Head, router, usePage } from '@inertiajs/react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {
+    Activity,
+    AlertTriangle,
+    ArrowDown,
+    ArrowUp,
+    BarChart3,
+    CalendarClock,
+    CheckCircle2,
+    Clock3,
+    Eye,
+    FolderKanban,
+    GraduationCap,
+    ListFilter,
+    ShieldCheck,
+    UserRound,
+    UsersRound,
+} from 'lucide-react';
 
 type AuthUser = {
     id?: number;
@@ -15,20 +32,157 @@ type SharedPageProps = {
     };
 };
 
+type Usuario = {
+    id?: number;
+    name?: string | null;
+    email?: string | null;
+};
+
+type Revisor = Usuario & {
+    asignado_en?: string | null;
+    plazo_revision?: string | null;
+};
+
+type TimelineItem = {
+    id: number;
+    estado_anterior?: string | null;
+    estado_nuevo: string;
+    comentario?: string | null;
+    created_at: string;
+    usuario?: {
+        name?: string | null;
+        email?: string | null;
+    } | null;
+};
+
+type ProyectoDashboard = {
+    id: number;
+    codigo: string;
+    titulo: string;
+    descripcion?: string | null;
+    modalidad?: string | null;
+    area_tematica?: string | null;
+    estado: string;
+    created_at?: string | null;
+    updated_at?: string | null;
+    estudiante?: Usuario | null;
+    tutor?: Usuario | null;
+    revisores?: Revisor[];
+    ultimo_avance?: {
+        fecha?: string | null;
+        resumen?: string | null;
+        comentario?: string | null;
+        usuario?: string | null;
+    } | null;
+    linea_tiempo?: TimelineItem[];
+};
+
+type DashboardData = {
+    rol: string;
+    filters: {
+        sort_by: 'estado' | 'ultimo_avance';
+        sort_dir: 'asc' | 'desc';
+    };
+    summary: {
+        total_proyectos: number;
+        sin_avance: number;
+        por_estado: Record<string, number>;
+        ultimo_avance_general?: string | null;
+    };
+    proyectos: ProyectoDashboard[];
+};
+
+type Props = {
+    dashboardData?: DashboardData;
+};
+
 const roleLabels: Record<string, string> = {
     estudiante: 'Estudiante',
-    tutor: 'Tutor',
-    revisor: 'Revisor',
+    docente: 'Docente',
     coordinador: 'Coordinador',
     admin: 'Administrador',
     administrador: 'Administrador',
 };
 
+const estadoLabels: Record<string, string> = {
+    en_revision: 'En revisión',
+    aprobado: 'Aprobado',
+    rechazado: 'Rechazado',
+    en_desarrollo: 'En desarrollo',
+    observado: 'Observado',
+    concluido: 'Concluido',
+};
+
+const estadoSolid: Record<string, string> = {
+    en_revision: '#C9A84C',
+    aprobado: '#3F9D58',
+    rechazado: '#B91C1C',
+    en_desarrollo: '#2563EB',
+    observado: '#EA8A1F',
+    concluido: '#6E6458',
+};
+
+const estadoTone: Record<string, string> = {
+    en_revision: 'state-review',
+    aprobado: 'state-approved',
+    rechazado: 'state-rejected',
+    en_desarrollo: 'state-development',
+    observado: 'state-observed',
+    concluido: 'state-finished',
+};
+
+const estadoOrder = [
+    'en_revision',
+    'en_desarrollo',
+    'observado',
+    'aprobado',
+    'rechazado',
+    'concluido',
+];
+
 function normalizeRole(role?: string | null): string {
     return String(role || 'estudiante').toLowerCase();
 }
 
-function getInitials(name?: string): string {
+function estadoLabel(value?: string | null): string {
+    if (!value) return 'Sin estado';
+    return estadoLabels[value] || value.replaceAll('_', ' ');
+}
+
+function formatDate(value?: string | null): string {
+    if (!value) return 'Sin registro';
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Sin registro';
+    }
+
+    return new Intl.DateTimeFormat('es-BO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(date);
+}
+
+function formatShortDate(value?: string | null): string {
+    if (!value) return 'Sin registro';
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Sin registro';
+    }
+
+    return new Intl.DateTimeFormat('es-BO', {
+        day: '2-digit',
+        month: 'short',
+    }).format(date);
+}
+
+function getInitials(name?: string | null): string {
     if (!name) return 'U';
 
     return name
@@ -39,149 +193,479 @@ function getInitials(name?: string): string {
         .join('');
 }
 
-const IconUser = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <path d="M20 21a8 8 0 10-16 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-);
+function safePercent(value: number, total: number): number {
+    if (total <= 0) return 0;
+    return Math.round((value / total) * 100);
+}
 
-const IconMail = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <path
-            d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-        />
-        <path d="M22 6l-10 7L2 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-);
+function isCoordinatorRole(role: string): boolean {
+    return role === 'coordinador' || role === 'admin';
+}
 
-const IconShield = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <path
-            d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinejoin="round"
-        />
-        <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-);
+function getMainTitle(role: string): string {
+    if (role === 'estudiante') return 'Seguimiento de mi proyecto';
+    if (role === 'docente') return 'Panel docente';
+    if (isCoordinatorRole(role)) return 'Panorama académico general';
+    return 'Dashboard académico';
+}
 
-const IconSpark = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <path
-            d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2z"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinejoin="round"
-        />
-        <path
-            d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16z"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinejoin="round"
-        />
-    </svg>
-);
+function getDescription(role: string): string {
+    if (role === 'estudiante') {
+        return 'Consulta el estado actual de tu proyecto, el último avance registrado y la evolución del proceso académico.';
+    }
 
-const IconBook = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-);
+    if (role === 'docente') {
+        return 'Consulta los proyectos donde figuras como tutor o revisor y prioriza tu trabajo según estado y último avance.';
+    }
 
-const IconClock = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-);
+    if (isCoordinatorRole(role)) {
+        return 'Vista ejecutiva para revisar estados, proyectos sin avance, carga operativa y actividad reciente del sistema académico.';
+    }
 
-const IconLayers = () => (
-    <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
-        <path d="M12 3L3 8l9 5 9-5-9-5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-        <path d="M3 13l9 5 9-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3 18l9 5 9-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-);
+    return 'Consulta la información académica disponible para tu perfil.';
+}
 
-export default function Dashboard() {
+function getDonutGradient(porEstado: Record<string, number>, total: number): string {
+    if (total <= 0) {
+        return 'conic-gradient(var(--muted-border) 0deg 360deg)';
+    }
+
+    let current = 0;
+
+    const segments = estadoOrder
+        .filter((estado) => (porEstado[estado] || 0) > 0)
+        .map((estado) => {
+            const value = porEstado[estado] || 0;
+            const degrees = (value / total) * 360;
+            const start = current;
+            const end = current + degrees;
+            current = end;
+
+            return `${estadoSolid[estado] || '#8A8074'} ${start}deg ${end}deg`;
+        });
+
+    return `conic-gradient(${segments.join(', ')})`;
+}
+
+function EstadoChip({ estado }: { estado: string }) {
+    return (
+        <span className={`estado-chip ${estadoTone[estado] || 'state-default'}`}>
+            <span className="estado-dot" />
+            {estadoLabel(estado)}
+        </span>
+    );
+}
+
+function KpiCard({
+    icon,
+    label,
+    value,
+    note,
+    tone = 'neutral',
+}: {
+    icon: ReactNode;
+    label: string;
+    value: ReactNode;
+    note: string;
+    tone?: 'neutral' | 'warning' | 'danger' | 'success';
+}) {
+    return (
+        <article className={`kpi-card tone-${tone}`}>
+            <div className="kpi-head">
+                <span className="kpi-icon">{icon}</span>
+                <span>{label}</span>
+            </div>
+
+            <div className="kpi-value">{value}</div>
+            <p className="kpi-note">{note}</p>
+        </article>
+    );
+}
+
+function SortButton({
+    active,
+    label,
+    direction,
+    onClick,
+}: {
+    active: boolean;
+    label: string;
+    direction: 'asc' | 'desc';
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            className={`sort-button ${active ? 'is-active' : ''}`}
+            aria-pressed={active}
+            onClick={onClick}
+        >
+            <ListFilter className="h-4 w-4" />
+            <span>{label}</span>
+            {active && (
+                direction === 'asc'
+                    ? <ArrowUp className="h-3.5 w-3.5" />
+                    : <ArrowDown className="h-3.5 w-3.5" />
+            )}
+        </button>
+    );
+}
+
+function StateDistribution({
+    porEstado,
+    total,
+}: {
+    porEstado: Record<string, number>;
+    total: number;
+}) {
+    const estados = estadoOrder.filter((estado) => (porEstado[estado] || 0) > 0);
+
+    if (estados.length === 0) {
+        return (
+            <div className="empty-soft">
+                <BarChart3 className="h-5 w-5" />
+                <div>
+                    <strong>Sin datos de distribución</strong>
+                    <p>No hay proyectos activos para mostrar.</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="distribution">
+            {estados.map((estado) => {
+                const count = porEstado[estado] || 0;
+                const percent = safePercent(count, total);
+
+                return (
+                    <div key={estado} className="distribution-row">
+                        <div className="distribution-top">
+                            <EstadoChip estado={estado} />
+                            <strong>{count}</strong>
+                        </div>
+
+                        <div className="bar-track">
+                            <div
+                                className={`bar-fill ${estadoTone[estado] || 'state-default'}`}
+                                style={{ width: `${percent}%` }}
+                            />
+                        </div>
+
+                        <span className="distribution-percent">{percent}% del total</span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function Timeline({ items }: { items: TimelineItem[] }) {
+    if (!items.length) {
+        return (
+            <div className="empty-soft">
+                <Clock3 className="h-5 w-5" />
+                <div>
+                    <strong>Sin línea de tiempo</strong>
+                    <p>El historial aparecerá cuando se registren cambios de estado.</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="timeline">
+            {items.map((item) => (
+                <div key={item.id} className="timeline-item">
+                    <span className="timeline-marker" />
+
+                    <div className="timeline-card">
+                        <strong>
+                            {estadoLabel(item.estado_anterior)} → {estadoLabel(item.estado_nuevo)}
+                        </strong>
+                        <p>{formatDate(item.created_at)}</p>
+                        <span>Registrado por {item.usuario?.name || 'Usuario no identificado'}</span>
+
+                        {item.comentario && (
+                            <em>{item.comentario}</em>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function ProjectRow({
+    proyecto,
+    selected,
+    onSelect,
+    coordinatorMode,
+}: {
+    proyecto: ProyectoDashboard;
+    selected: boolean;
+    onSelect: () => void;
+    coordinatorMode: boolean;
+}) {
+    return (
+        <button
+            type="button"
+            className={`project-row ${selected ? 'is-selected' : ''}`}
+            aria-pressed={selected}
+            onClick={onSelect}
+        >
+            <div className="project-main">
+                <span className="project-code">{proyecto.codigo}</span>
+                <strong>{proyecto.titulo}</strong>
+                <p>
+                    {proyecto.estudiante?.name || 'Sin estudiante'}
+                    {coordinatorMode && (
+                        <> · Tutor: {proyecto.tutor?.name || 'Sin tutor'}</>
+                    )}
+                </p>
+            </div>
+
+            <div className="project-status">
+                <EstadoChip estado={proyecto.estado} />
+            </div>
+
+            <div className="project-date">
+                <span>Último avance</span>
+                <strong>{formatShortDate(proyecto.ultimo_avance?.fecha)}</strong>
+            </div>
+
+            <div className="project-action">
+                <Eye className="h-4 w-4" />
+                Ver
+            </div>
+        </button>
+    );
+}
+
+function ProjectDetail({ proyecto }: { proyecto: ProyectoDashboard | null }) {
+    if (!proyecto) {
+        return (
+            <aside className="detail-panel empty-detail">
+                <FolderKanban className="h-8 w-8" />
+                <h3>Selecciona un proyecto</h3>
+                <p>El detalle y la línea de tiempo se mostrarán en esta sección.</p>
+            </aside>
+        );
+    }
+
+    return (
+        <aside className="detail-panel">
+            <div className="detail-head">
+                <div className="eyebrow">
+                    <Activity className="h-4 w-4" />
+                    Detalle del proyecto
+                </div>
+
+                <h2>{proyecto.titulo}</h2>
+                <EstadoChip estado={proyecto.estado} />
+            </div>
+
+            <div className="detail-body">
+                <div className="detail-grid">
+                    <div className="detail-item">
+                        <span>Estudiante</span>
+                        <strong>{proyecto.estudiante?.name || 'Sin estudiante'}</strong>
+                        <p>{proyecto.estudiante?.email || 'Sin correo registrado'}</p>
+                    </div>
+
+                    <div className="detail-item">
+                        <span>Tutor</span>
+                        <strong>{proyecto.tutor?.name || 'Sin tutor asignado'}</strong>
+                        <p>{proyecto.tutor?.email || 'Sin correo registrado'}</p>
+                    </div>
+
+                    <div className="detail-item">
+                        <span>Último avance</span>
+                        <strong>{proyecto.ultimo_avance?.resumen || 'Sin avance registrado'}</strong>
+                        <p>{formatDate(proyecto.ultimo_avance?.fecha)}</p>
+                    </div>
+
+                    <div className="detail-item">
+                        <span>Área temática</span>
+                        <strong>{proyecto.area_tematica || 'Sin área temática registrada'}</strong>
+                        <p>{proyecto.descripcion || 'Sin descripción registrada.'}</p>
+                    </div>
+
+                    <div className="detail-item">
+                        <span>Revisores</span>
+
+                        {proyecto.revisores && proyecto.revisores.length > 0 ? (
+                            <div className="reviewers">
+                                {proyecto.revisores.map((revisor) => (
+                                    <span key={revisor.id} className="reviewer-chip">
+                                        <UsersRound className="h-3.5 w-3.5" />
+                                        {revisor.name}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : (
+                            <p>No hay revisores asignados todavía.</p>
+                        )}
+                    </div>
+                </div>
+
+                <div>
+                    <div className="eyebrow timeline-title">
+                        <Clock3 className="h-4 w-4" />
+                        Línea de tiempo
+                    </div>
+
+                    <Timeline items={proyecto.linea_tiempo || []} />
+                </div>
+            </div>
+        </aside>
+    );
+}
+
+export default function Dashboard({ dashboardData }: Props) {
     const page = usePage<SharedPageProps>();
 
     const user = page.props.auth?.user;
     const userName = user?.name || 'Usuario';
     const userEmail = user?.email || 'Sin correo registrado';
 
-    const rawRole = user?.role ?? user?.rol;
+    const rawRole = dashboardData?.rol ?? user?.role ?? user?.rol;
     const role = normalizeRole(rawRole);
     const roleLabel = roleLabels[role] || role;
+
+    const proyectos = dashboardData?.proyectos || [];
+    const filters = dashboardData?.filters || {
+        sort_by: 'ultimo_avance',
+        sort_dir: 'desc',
+    };
+
+    const summary = dashboardData?.summary || {
+        total_proyectos: 0,
+        sin_avance: 0,
+        por_estado: {},
+        ultimo_avance_general: null,
+    };
+
+    const coordinatorMode = isCoordinatorRole(role);
+
+    const [selectedProjectId, setSelectedProjectId] = useState<number | null>(
+        proyectos[0]?.id ?? null,
+    );
+
+    const selectedProject =
+        proyectos.find((proyecto) => proyecto.id === selectedProjectId)
+        || proyectos[0]
+        || null;
+
+    const totalRevision = summary.por_estado?.en_revision || 0;
+    const totalObservados = summary.por_estado?.observado || 0;
+    const totalConcluidos = summary.por_estado?.concluido || 0;
+    const totalAtencion = summary.sin_avance + totalRevision + totalObservados;
+
+    const proyectosAtencion = useMemo(() => {
+        return proyectos
+            .filter((proyecto) => {
+                return !proyecto.ultimo_avance?.fecha
+                    || ['en_revision', 'observado', 'rechazado'].includes(proyecto.estado);
+            })
+            .slice(0, 6);
+    }, [proyectos]);
+
+    const proyectosRecientes = useMemo(() => {
+        return [...proyectos]
+            .filter((proyecto) => proyecto.ultimo_avance?.fecha)
+            .sort((a, b) => {
+                const dateA = new Date(a.ultimo_avance?.fecha || '').getTime();
+                const dateB = new Date(b.ultimo_avance?.fecha || '').getTime();
+
+                return dateB - dateA;
+            })
+            .slice(0, 5);
+    }, [proyectos]);
+
+    const cambiarOrden = (sortBy: 'estado' | 'ultimo_avance') => {
+        const nextDirection =
+            filters.sort_by === sortBy && filters.sort_dir === 'desc'
+                ? 'asc'
+                : 'desc';
+
+        router.get(
+            '/dashboard',
+            {
+                sort_by: sortBy,
+                sort_dir: nextDirection,
+            },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    };
 
     return (
         <>
             <Head title="Dashboard" />
 
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600;700;800&display=swap');
-
                 .dashboard-page,
                 .dashboard-page * {
                     box-sizing: border-box;
                 }
 
                 .dashboard-page {
+                    --page-bg: #F7F2EA;
+                    --surface: rgba(255,255,255,0.86);
+                    --surface-strong: #FFFFFF;
+                    --surface-soft: rgba(255,255,255,0.66);
+                    --text: #24151A;
+                    --muted: #6E6458;
+                    --muted-2: #8A8074;
+                    --border: rgba(107,18,48,0.14);
+                    --border-strong: rgba(107,18,48,0.26);
+                    --guindo: #6B1230;
+                    --guindo-strong: #4A0D21;
+                    --gold: #C9A84C;
+                    --gold-strong: #9A6C18;
+                    --shadow: 0 18px 45px rgba(107,18,48,0.10);
+                    --muted-border: rgba(110,100,88,0.16);
+
                     width: 100%;
-                    position: relative;
-                    overflow-x: hidden;
-                    overflow-y: visible;
-                    color: #24151A;
-                    font-family: 'Source Sans 3', sans-serif;
+                    min-height: 100vh;
+                    color: var(--text);
                     background:
-                        radial-gradient(circle at 92% 8%, rgba(201,168,76,0.26), transparent 30%),
-                        radial-gradient(circle at 0% 92%, rgba(107,18,48,0.16), transparent 36%),
+                        radial-gradient(circle at 92% 8%, rgba(201,168,76,0.20), transparent 30%),
+                        radial-gradient(circle at 0% 92%, rgba(107,18,48,0.13), transparent 36%),
                         linear-gradient(135deg, #FAF8F5 0%, #F5F0EA 42%, #F6EEDC 100%);
                 }
 
                 @media (prefers-color-scheme: dark) {
                     .dashboard-page {
-                        color: #F4EEE9;
+                        --page-bg: #211018;
+                        --surface: rgba(53,27,40,0.92);
+                        --surface-strong: #351B28;
+                        --surface-soft: rgba(255,255,255,0.055);
+                        --text: #F4EEE9;
+                        --muted: #D7C9C0;
+                        --muted-2: #A9978D;
+                        --border: rgba(214,185,106,0.18);
+                        --border-strong: rgba(214,185,106,0.32);
+                        --guindo: #D4849A;
+                        --guindo-strong: #E3A1B2;
+                        --gold: #D6B96A;
+                        --gold-strong: #E2CA8A;
+                        --shadow: 0 18px 45px rgba(18,7,12,0.34);
+                        --muted-border: rgba(255,255,255,0.12);
+
                         background:
-                            radial-gradient(circle at 95% 6%, rgba(214,185,106,0.20), transparent 28%),
-                            radial-gradient(circle at 2% 98%, rgba(184,80,112,0.18), transparent 34%),
+                            radial-gradient(circle at 95% 6%, rgba(214,185,106,0.16), transparent 28%),
+                            radial-gradient(circle at 2% 98%, rgba(184,80,112,0.16), transparent 34%),
                             linear-gradient(135deg, #2B1620 0%, #24121A 46%, #351B28 100%);
                     }
                 }
 
-                .dashboard-page::before {
-                    content: '';
-                    position: absolute;
-                    inset: 0;
-                    pointer-events: none;
-                    opacity: 0.16;
-                    background-image:
-                        linear-gradient(rgba(107,18,48,0.18) 1px, transparent 1px),
-                        linear-gradient(90deg, rgba(107,18,48,0.18) 1px, transparent 1px);
-                    background-size: 48px 48px;
-                    mask-image: radial-gradient(ellipse 80% 65% at 50% 42%, black 20%, transparent 100%);
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-page::before {
-                        opacity: 0.10;
-                        background-image:
-                            linear-gradient(rgba(214,185,106,0.45) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(214,185,106,0.45) 1px, transparent 1px);
-                    }
-                }
-
                 .dashboard-shell {
-                    position: relative;
-                    z-index: 1;
-                    display: flex;
-                    width: 100%;
-                    flex-direction: column;
+                    display: grid;
                     gap: 1.25rem;
                     padding: 1rem;
                 }
@@ -193,849 +677,998 @@ export default function Dashboard() {
                     }
                 }
 
-                .dashboard-hero {
-                    position: relative;
-                    overflow: hidden;
-                    border-radius: 1.6rem;
-                    border: 1px solid rgba(107,18,48,0.14);
-                    background:
-                        radial-gradient(circle at 90% 10%, rgba(201,168,76,0.30), transparent 32%),
-                        radial-gradient(circle at 0% 100%, rgba(107,18,48,0.12), transparent 38%),
-                        linear-gradient(135deg, rgba(255,255,255,0.88), rgba(249,237,240,0.92) 46%, rgba(246,238,220,0.88));
-                    box-shadow: 0 18px 45px rgba(107,18,48,0.10), 0 8px 18px rgba(26,22,20,0.06);
+                .hero-panel,
+                .kpi-card,
+                .chart-panel,
+                .project-row,
+                .detail-panel,
+                .mini-panel {
+                    border: 1px solid var(--border);
+                    background: var(--surface);
+                    box-shadow: var(--shadow);
+                    backdrop-filter: blur(10px);
                 }
 
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-hero {
-                        border-color: rgba(214,185,106,0.24);
-                        background:
-                            radial-gradient(circle at 90% 10%, rgba(214,185,106,0.22), transparent 30%),
-                            radial-gradient(circle at 0% 100%, rgba(212,132,154,0.22), transparent 38%),
-                            linear-gradient(135deg, rgba(67,34,50,0.96), rgba(43,22,32,0.96) 48%, rgba(53,27,40,0.96));
-                        box-shadow: 0 18px 45px rgba(18,7,12,0.38);
-                    }
-                }
-
-                .dashboard-hero::before {
-                    content: '';
-                    position: absolute;
-                    top: -120px;
-                    right: -90px;
-                    width: 320px;
-                    height: 320px;
-                    border-radius: 999px;
-                    background: radial-gradient(circle, rgba(201,168,76,0.32), transparent 68%);
-                    pointer-events: none;
-                }
-
-                .dashboard-hero::after {
-                    content: '';
-                    position: absolute;
-                    bottom: -160px;
-                    left: -120px;
-                    width: 360px;
-                    height: 360px;
-                    border-radius: 999px;
-                    background: radial-gradient(circle, rgba(107,18,48,0.16), transparent 68%);
-                    pointer-events: none;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-hero::before {
-                        background: radial-gradient(circle, rgba(214,185,106,0.22), transparent 68%);
-                    }
-
-                    .dashboard-hero::after {
-                        background: radial-gradient(circle, rgba(212,132,154,0.20), transparent 68%);
-                    }
-                }
-
-                .dashboard-hero-content {
-                    position: relative;
-                    z-index: 1;
-                    display: grid;
-                    gap: 1.4rem;
+                .hero-panel {
+                    border-radius: 1.5rem;
                     padding: 1.35rem;
+                    background:
+                        linear-gradient(135deg, var(--surface-strong), var(--surface)),
+                        radial-gradient(circle at 90% 10%, rgba(201,168,76,0.24), transparent 32%);
                 }
 
                 @media (min-width: 900px) {
-                    .dashboard-hero-content {
-                        grid-template-columns: minmax(0, 1.5fr) minmax(310px, 0.8fr);
-                        align-items: stretch;
-                        padding: 2rem;
+                    .hero-panel {
+                        padding: 1.65rem;
                     }
                 }
 
-                .dashboard-eyebrow {
+                .hero-grid {
+                    display: grid;
+                    gap: 1.25rem;
+                }
+
+                @media (min-width: 920px) {
+                    .hero-grid {
+                        grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.72fr);
+                        align-items: center;
+                    }
+                }
+
+                .eyebrow {
                     display: inline-flex;
                     align-items: center;
-                    gap: 0.5rem;
-                    margin-bottom: 1rem;
-                    border-radius: 999px;
-                    border: 1px solid rgba(184,138,40,0.34);
-                    background: rgba(201,168,76,0.14);
-                    padding: 0.38rem 0.9rem;
-                    color: #9A6C18;
-                    font-size: 0.7rem;
-                    font-weight: 900;
-                    letter-spacing: 0.14em;
-                    text-transform: uppercase;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-eyebrow {
-                        border-color: rgba(214,185,106,0.38);
-                        background: rgba(214,185,106,0.10);
-                        color: #D6B96A;
-                    }
-                }
-
-                .dashboard-eyebrow svg {
-                    width: 0.9rem;
-                    height: 0.9rem;
-                }
-
-                .dashboard-title {
-                    margin: 0;
-                    color: #24151A;
-                    font-family: 'Playfair Display', serif;
-                    font-size: clamp(2rem, 4vw, 3.1rem);
-                    font-weight: 700;
-                    line-height: 1.06;
-                    letter-spacing: -0.035em;
-                }
-
-                .dashboard-title span {
-                    color: #6B1230;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-title {
-                        color: #F4EEE9;
-                    }
-
-                    .dashboard-title span {
-                        color: #E2CA8A;
-                    }
-                }
-
-                .dashboard-description {
-                    margin-top: 0.9rem;
-                    max-width: 43rem;
-                    color: #6E6458;
-                    font-size: 0.96rem;
-                    line-height: 1.78;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-description {
-                        color: #D7C9C0;
-                    }
-                }
-
-                .dashboard-details-grid {
-                    margin-top: 1.45rem;
-                    display: grid;
-                    gap: 0.85rem;
-                }
-
-                @media (min-width: 640px) {
-                    .dashboard-details-grid {
-                        grid-template-columns: repeat(2, minmax(0, 1fr));
-                    }
-                }
-
-                .dashboard-detail-card {
-                    position: relative;
-                    overflow: hidden;
-                    border-radius: 1.1rem;
-                    border: 1px solid rgba(107,18,48,0.12);
-                    background: rgba(255,255,255,0.62);
-                    padding: 1rem;
-                    backdrop-filter: blur(10px);
-                    box-shadow: 0 10px 28px rgba(107,18,48,0.06);
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-detail-card {
-                        border-color: rgba(214,185,106,0.16);
-                        background: rgba(255,255,255,0.055);
-                        box-shadow: none;
-                    }
-                }
-
-                .dashboard-detail-card::before {
-                    content: '';
-                    position: absolute;
-                    inset: 0;
-                    background: radial-gradient(circle at top right, rgba(201,168,76,0.16), transparent 40%);
-                    pointer-events: none;
-                }
-
-                .dashboard-detail-head {
-                    position: relative;
-                    z-index: 1;
-                    display: flex;
-                    align-items: center;
-                    gap: 0.55rem;
-                    color: #8A8074;
+                    gap: 0.45rem;
+                    color: var(--gold-strong);
                     font-size: 0.68rem;
                     font-weight: 900;
                     letter-spacing: 0.13em;
                     text-transform: uppercase;
                 }
 
-                .dashboard-detail-head svg {
-                    color: #B88A28;
+                .hero-title {
+                    margin-top: 0.65rem;
+                    color: var(--text);
+                    font-size: clamp(1.9rem, 3.3vw, 3rem);
+                    font-weight: 950;
+                    line-height: 1.06;
+                    letter-spacing: -0.04em;
                 }
 
-                .dashboard-detail-value {
-                    position: relative;
-                    z-index: 1;
-                    margin-top: 0.38rem;
-                    color: #24151A;
-                    font-size: 0.96rem;
-                    font-weight: 900;
-                    line-height: 1.35;
-                    overflow-wrap: anywhere;
+                .hero-description {
+                    margin-top: 0.8rem;
+                    max-width: 56rem;
+                    color: var(--muted);
+                    font-size: 0.95rem;
+                    line-height: 1.7;
                 }
 
-                .dashboard-detail-card.is-role {
-                    border-color: rgba(107,18,48,0.22);
-                    background: rgba(249,237,240,0.76);
-                }
-
-                .dashboard-detail-card.is-role .dashboard-detail-value {
-                    color: #6B1230;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .dashboard-detail-head {
-                        color: #A9978D;
-                    }
-
-                    .dashboard-detail-head svg {
-                        color: #D6B96A;
-                    }
-
-                    .dashboard-detail-value {
-                        color: #F4EEE9;
-                    }
-
-                    .dashboard-detail-card.is-role {
-                        border-color: rgba(212,132,154,0.35);
-                        background: rgba(212,132,154,0.10);
-                    }
-
-                    .dashboard-detail-card.is-role .dashboard-detail-value {
-                        color: #D4849A;
-                    }
-                }
-
-                .profile-card {
-                    position: relative;
-                    overflow: hidden;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                    min-height: 100%;
-                    border-radius: 1.35rem;
-                    border: 1px solid rgba(107,18,48,0.14);
-                    background:
-                        radial-gradient(circle at top right, rgba(201,168,76,0.22), transparent 42%),
-                        linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.46));
-                    padding: 1.25rem;
-                    backdrop-filter: blur(12px);
-                    box-shadow: 0 14px 34px rgba(107,18,48,0.08);
-                }
-
-                .profile-card::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 3px;
-                    background: linear-gradient(90deg, #6B1230, #C9A84C);
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .profile-card {
-                        border-color: rgba(214,185,106,0.22);
-                        background:
-                            radial-gradient(circle at top right, rgba(214,185,106,0.14), transparent 42%),
-                            linear-gradient(180deg, rgba(255,255,255,0.075), rgba(255,255,255,0.035));
-                        box-shadow: none;
-                    }
-
-                    .profile-card::before {
-                        background: linear-gradient(90deg, #D4849A, #D6B96A);
-                    }
+                .profile-box {
+                    border-radius: 1.2rem;
+                    border: 1px solid var(--border);
+                    background: var(--surface-soft);
+                    padding: 1rem;
                 }
 
                 .profile-main {
-                    position: relative;
-                    z-index: 1;
                     display: flex;
                     align-items: center;
-                    gap: 1rem;
+                    gap: 0.85rem;
                 }
 
                 .profile-avatar {
                     display: flex;
-                    height: 4.4rem;
-                    width: 4.4rem;
-                    flex-shrink: 0;
+                    width: 3.7rem;
+                    height: 3.7rem;
                     align-items: center;
                     justify-content: center;
-                    border-radius: 1.2rem;
-                    border: 1px solid rgba(184,138,40,0.34);
-                    background:
-                        linear-gradient(135deg, rgba(107,18,48,0.14), rgba(201,168,76,0.22));
-                    color: #6B1230;
-                    font-size: 1.18rem;
-                    font-weight: 900;
-                    box-shadow: 0 12px 30px rgba(107,18,48,0.10);
+                    border-radius: 1rem;
+                    border: 1px solid var(--border-strong);
+                    background: color-mix(in srgb, var(--gold) 18%, transparent);
+                    color: var(--gold-strong);
+                    font-size: 1rem;
+                    font-weight: 950;
                 }
 
                 .profile-name {
                     margin: 0;
-                    color: #24151A;
-                    font-size: 1rem;
+                    color: var(--text);
+                    font-size: 0.95rem;
                     font-weight: 900;
                     line-height: 1.3;
                 }
 
                 .profile-email {
-                    margin-top: 0.2rem;
-                    color: #6E6458;
+                    margin-top: 0.1rem;
+                    color: var(--muted);
                     font-size: 0.8rem;
-                    line-height: 1.45;
                     overflow-wrap: anywhere;
                 }
 
-                @media (prefers-color-scheme: dark) {
-                    .profile-avatar {
-                        border-color: rgba(214,185,106,0.46);
-                        background:
-                            linear-gradient(135deg, rgba(212,132,154,0.28), rgba(214,185,106,0.18));
-                        color: #E2CA8A;
-                        box-shadow: 0 12px 30px rgba(18,7,12,0.28);
-                    }
-
-                    .profile-name {
-                        color: #F4EEE9;
-                    }
-
-                    .profile-email {
-                        color: #A9978D;
-                    }
-                }
-
-                .profile-status {
-                    position: relative;
-                    z-index: 1;
-                    margin-top: 1.25rem;
-                    display: flex;
+                .role-badge {
+                    display: inline-flex;
                     align-items: center;
-                    gap: 0.65rem;
-                    border-radius: 0.95rem;
-                    border: 1px solid rgba(107,18,48,0.20);
-                    background: rgba(249,237,240,0.70);
-                    padding: 0.85rem 0.95rem;
-                }
-
-                .profile-status-dot {
-                    height: 0.65rem;
-                    width: 0.65rem;
-                    flex-shrink: 0;
+                    gap: 0.4rem;
+                    margin-top: 0.9rem;
                     border-radius: 999px;
-                    background: #6B1230;
-                    box-shadow: 0 0 0 4px rgba(107,18,48,0.12);
-                }
-
-                .profile-status-text {
-                    color: #6B1230;
-                    font-size: 0.86rem;
+                    background: color-mix(in srgb, var(--guindo) 14%, transparent);
+                    color: var(--guindo);
+                    padding: 0.42rem 0.75rem;
+                    font-size: 0.78rem;
                     font-weight: 900;
                 }
 
-                .profile-note {
-                    position: relative;
-                    z-index: 1;
-                    margin-top: 1rem;
-                    border-top: 1px solid rgba(107,18,48,0.10);
-                    padding-top: 1rem;
-                    color: #6E6458;
-                    font-size: 0.8rem;
-                    line-height: 1.65;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .profile-status {
-                        border-color: rgba(212,132,154,0.34);
-                        background: rgba(212,132,154,0.10);
-                    }
-
-                    .profile-status-dot {
-                        background: #D4849A;
-                        box-shadow: 0 0 0 4px rgba(212,132,154,0.16);
-                    }
-
-                    .profile-status-text {
-                        color: #E3A1B2;
-                    }
-
-                    .profile-note {
-                        border-top-color: rgba(214,185,106,0.14);
-                        color: #A9978D;
-                    }
-                }
-
-                .visual-strip {
+                .kpi-grid {
                     display: grid;
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 0.8rem;
+                    gap: 0.9rem;
                 }
 
-                @media (max-width: 820px) {
-                    .visual-strip {
-                        grid-template-columns: 1fr;
+                @media (min-width: 700px) {
+                    .kpi-grid {
+                        grid-template-columns: repeat(4, minmax(0, 1fr));
                     }
                 }
 
-                .mini-card {
+                .kpi-card {
                     position: relative;
                     overflow: hidden;
-                    border-radius: 1.1rem;
-                    border: 1px solid rgba(107,18,48,0.12);
-                    background:
-                        radial-gradient(circle at top right, rgba(201,168,76,0.22), transparent 38%),
-                        rgba(255,255,255,0.70);
+                    border-radius: 1.15rem;
                     padding: 1rem;
-                    min-height: 7.5rem;
-                    box-shadow: 0 14px 34px rgba(107,18,48,0.08);
                 }
 
-                .mini-icon {
+                .kpi-card::before {
+                    content: '';
+                    position: absolute;
+                    inset: 0;
+                    background: radial-gradient(circle at top right, rgba(201,168,76,0.16), transparent 42%);
+                    pointer-events: none;
+                }
+
+                .kpi-card.tone-warning::before {
+                    background: radial-gradient(circle at top right, rgba(234,138,31,0.18), transparent 42%);
+                }
+
+                .kpi-card.tone-danger::before {
+                    background: radial-gradient(circle at top right, rgba(185,28,28,0.16), transparent 42%);
+                }
+
+                .kpi-card.tone-success::before {
+                    background: radial-gradient(circle at top right, rgba(63,157,88,0.16), transparent 42%);
+                }
+
+                .kpi-head {
+                    position: relative;
+                    z-index: 1;
                     display: flex;
-                    height: 2.25rem;
-                    width: 2.25rem;
                     align-items: center;
-                    justify-content: center;
-                    border-radius: 0.8rem;
-                    border: 1px solid rgba(184,138,40,0.28);
-                    background: rgba(201,168,76,0.14);
-                    color: #9A6C18;
-                    margin-bottom: 0.75rem;
-                }
-
-                .mini-label {
-                    color: #8A8074;
+                    gap: 0.45rem;
+                    color: var(--muted-2);
                     font-size: 0.68rem;
                     font-weight: 900;
-                    letter-spacing: 0.12em;
+                    letter-spacing: 0.1em;
                     text-transform: uppercase;
                 }
 
-                .mini-value {
+                .kpi-icon {
+                    color: var(--gold-strong);
+                }
+
+                .kpi-value {
+                    position: relative;
+                    z-index: 1;
+                    margin-top: 0.45rem;
+                    color: var(--text);
+                    font-size: 1.65rem;
+                    font-weight: 950;
+                    line-height: 1.1;
+                }
+
+                .kpi-note {
+                    position: relative;
+                    z-index: 1;
+                    margin-top: 0.35rem;
+                    color: var(--muted);
+                    font-size: 0.78rem;
+                    line-height: 1.45;
+                }
+
+                .coordinator-grid {
+                    display: grid;
+                    gap: 1rem;
+                }
+
+                @media (min-width: 1120px) {
+                    .coordinator-grid {
+                        grid-template-columns: minmax(0, 1fr) minmax(330px, 0.72fr);
+                    }
+                }
+
+                .chart-panel,
+                .mini-panel {
+                    border-radius: 1.2rem;
+                    padding: 1rem;
+                }
+
+                .panel-head {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    gap: 1rem;
+                    margin-bottom: 0.95rem;
+                }
+
+                .panel-title {
                     margin-top: 0.3rem;
-                    color: #24151A;
+                    color: var(--text);
+                    font-size: 1.05rem;
+                    font-weight: 950;
+                    letter-spacing: -0.02em;
+                }
+
+                .panel-note {
+                    margin-top: 0.25rem;
+                    color: var(--muted);
+                    font-size: 0.82rem;
+                    line-height: 1.55;
+                }
+
+                .donut-wrap {
+                    display: grid;
+                    gap: 1rem;
+                }
+
+                @media (min-width: 860px) {
+                    .donut-wrap {
+                        grid-template-columns: 220px minmax(0, 1fr);
+                        align-items: center;
+                    }
+                }
+
+                .donut {
+                    width: 190px;
+                    height: 190px;
+                    margin: 0 auto;
+                    border-radius: 999px;
+                    display: grid;
+                    place-items: center;
+                    background: var(--donut-bg);
+                    box-shadow: inset 0 0 0 1px var(--border);
+                }
+
+                .donut-center {
+                    display: grid;
+                    place-items: center;
+                    width: 116px;
+                    height: 116px;
+                    border-radius: 999px;
+                    background: var(--surface-strong);
+                    border: 1px solid var(--border);
+                    text-align: center;
+                }
+
+                .donut-center strong {
+                    color: var(--text);
+                    font-size: 1.6rem;
+                    font-weight: 950;
+                    line-height: 1;
+                }
+
+                .donut-center span {
+                    margin-top: 0.25rem;
+                    color: var(--muted);
+                    font-size: 0.72rem;
+                    font-weight: 850;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                }
+
+                .distribution {
+                    display: grid;
+                    gap: 0.85rem;
+                }
+
+                .distribution-row {
+                    display: grid;
+                    gap: 0.35rem;
+                }
+
+                .distribution-top {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 1rem;
+                }
+
+                .distribution-top strong {
+                    color: var(--text);
                     font-size: 0.9rem;
-                    font-weight: 900;
+                    font-weight: 950;
+                }
+
+                .bar-track {
+                    width: 100%;
+                    height: 0.55rem;
+                    border-radius: 999px;
+                    overflow: hidden;
+                    background: var(--muted-border);
+                }
+
+                .bar-fill {
+                    height: 100%;
+                    min-width: 0.35rem;
+                    border-radius: 999px;
+                }
+
+                .bar-fill.state-review { background: #C9A84C; }
+                .bar-fill.state-approved { background: #3F9D58; }
+                .bar-fill.state-rejected { background: #B91C1C; }
+                .bar-fill.state-development { background: #2563EB; }
+                .bar-fill.state-observed { background: #EA8A1F; }
+                .bar-fill.state-finished { background: #6E6458; }
+                .bar-fill.state-default { background: #8A8074; }
+
+                .distribution-percent {
+                    color: var(--muted);
+                    font-size: 0.74rem;
+                    font-weight: 750;
+                }
+
+                .attention-list {
+                    display: grid;
+                    gap: 0.55rem;
+                }
+
+                .attention-button {
+                    width: 100%;
+                    display: grid;
+                    gap: 0.25rem;
+                    text-align: left;
+                    border: 1px solid var(--border);
+                    border-radius: 0.9rem;
+                    background: var(--surface-soft);
+                    padding: 0.75rem;
+                    color: var(--text);
+                    cursor: pointer;
+                }
+
+                .attention-button:hover {
+                    border-color: var(--border-strong);
+                    background: var(--surface-strong);
+                }
+
+                .attention-button strong {
+                    font-size: 0.83rem;
+                    font-weight: 950;
                     line-height: 1.35;
                 }
 
-                @media (prefers-color-scheme: dark) {
-                    .mini-card {
-                        border-color: rgba(214,185,106,0.18);
-                        background:
-                            radial-gradient(circle at top right, rgba(214,185,106,0.12), transparent 38%),
-                            rgba(255,255,255,0.045);
-                        box-shadow: 0 14px 34px rgba(18,7,12,0.22);
-                    }
-
-                    .mini-icon {
-                        border-color: rgba(214,185,106,0.24);
-                        background: rgba(214,185,106,0.10);
-                        color: #D6B96A;
-                    }
-
-                    .mini-label {
-                        color: #A9978D;
-                    }
-
-                    .mini-value {
-                        color: #F4EEE9;
-                    }
+                .attention-button span {
+                    color: var(--muted);
+                    font-size: 0.75rem;
+                    line-height: 1.45;
                 }
 
-                .dashboard-content-grid {
+                .content-grid {
                     display: grid;
                     gap: 1.25rem;
                 }
 
-                @media (min-width: 900px) {
-                    .dashboard-content-grid {
-                        grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+                @media (min-width: 1120px) {
+                    .content-grid {
+                        grid-template-columns: minmax(0, 1fr) minmax(360px, 0.72fr);
+                        align-items: start;
                     }
                 }
 
-                .soft-panel {
-                    position: relative;
-                    overflow: hidden;
-                    border-radius: 1.25rem;
-                    border: 1px solid rgba(107,18,48,0.12);
-                    background:
-                        radial-gradient(circle at 100% 0%, rgba(201,168,76,0.18), transparent 34%),
-                        linear-gradient(145deg, rgba(255,255,255,0.82), rgba(249,237,240,0.80));
-                    padding: 1.35rem;
-                    box-shadow: 0 14px 38px rgba(107,18,48,0.08);
+                .section-panel {
+                    display: grid;
+                    gap: 0.9rem;
                 }
 
-                .soft-panel::before {
-                    content: '';
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    right: 0;
-                    height: 3px;
-                    background: linear-gradient(90deg, #6B1230, #C9A84C);
-                    opacity: 0.95;
+                .section-head {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.75rem;
                 }
 
-                .soft-panel-label {
-                    color: #9A6C18;
-                    font-size: 0.72rem;
+                @media (min-width: 740px) {
+                    .section-head {
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: space-between;
+                    }
+                }
+
+                .section-title {
+                    margin: 0;
+                    color: var(--text);
+                    font-size: 1.2rem;
+                    font-weight: 950;
+                    letter-spacing: -0.02em;
+                }
+
+                .section-description {
+                    margin-top: 0.2rem;
+                    color: var(--muted);
+                    font-size: 0.85rem;
+                    line-height: 1.55;
+                }
+
+                .sort-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.55rem;
+                }
+
+                .sort-button {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.35rem;
+                    border: 1px solid var(--border);
+                    border-radius: 0.8rem;
+                    background: var(--surface);
+                    color: var(--muted);
+                    padding: 0.55rem 0.75rem;
+                    font-size: 0.78rem;
                     font-weight: 900;
-                    letter-spacing: 0.14em;
+                    cursor: pointer;
+                }
+
+                .sort-button:hover,
+                .sort-button.is-active {
+                    border-color: var(--border-strong);
+                    background: color-mix(in srgb, var(--guindo) 10%, var(--surface));
+                    color: var(--guindo);
+                }
+
+                .project-list {
+                    display: grid;
+                    gap: 0.65rem;
+                }
+
+                .project-row {
+                    width: 100%;
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr);
+                    gap: 0.7rem;
+                    align-items: center;
+                    border-radius: 1rem;
+                    padding: 0.85rem;
+                    text-align: left;
+                    color: var(--text);
+                    cursor: pointer;
+                }
+
+                @media (min-width: 920px) {
+                    .project-row {
+                        grid-template-columns: minmax(0, 1.45fr) auto minmax(120px, 0.35fr) auto;
+                    }
+                }
+
+                .project-row:hover,
+                .project-row.is-selected {
+                    border-color: var(--border-strong);
+                    background: var(--surface-strong);
+                    transform: translateY(-1px);
+                }
+
+                .project-code {
+                    display: inline-block;
+                    color: var(--gold-strong);
+                    font-size: 0.68rem;
+                    font-weight: 950;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    margin-bottom: 0.2rem;
+                }
+
+                .project-main strong {
+                    display: block;
+                    color: var(--text);
+                    font-size: 0.92rem;
+                    font-weight: 950;
+                    line-height: 1.3;
+                }
+
+                .project-main p {
+                    margin-top: 0.2rem;
+                    color: var(--muted);
+                    font-size: 0.78rem;
+                    line-height: 1.45;
+                }
+
+                .project-date span {
+                    display: block;
+                    color: var(--muted-2);
+                    font-size: 0.66rem;
+                    font-weight: 950;
+                    letter-spacing: 0.08em;
                     text-transform: uppercase;
                 }
 
-                .soft-panel-title {
-                    margin-top: 0.5rem;
-                    color: #24151A;
-                    font-family: 'Playfair Display', serif;
-                    font-size: 1.42rem;
-                    font-weight: 700;
+                .project-date strong {
+                    display: block;
+                    margin-top: 0.15rem;
+                    color: var(--text);
+                    font-size: 0.8rem;
+                    font-weight: 950;
+                }
+
+                .project-action {
+                    display: inline-flex;
+                    justify-content: center;
+                    align-items: center;
+                    gap: 0.35rem;
+                    border-radius: 0.7rem;
+                    background: color-mix(in srgb, var(--guindo) 10%, transparent);
+                    color: var(--guindo);
+                    padding: 0.45rem 0.65rem;
+                    font-size: 0.76rem;
+                    font-weight: 900;
+                }
+
+                .estado-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.4rem;
+                    width: max-content;
+                    flex-shrink: 0;
+                    border-radius: 999px;
+                    padding: 0.3rem 0.65rem;
+                    font-size: 0.72rem;
+                    font-weight: 900;
+                    white-space: nowrap;
+                }
+
+                .estado-dot {
+                    width: 0.48rem;
+                    height: 0.48rem;
+                    border-radius: 999px;
+                    background: currentColor;
+                }
+
+                .state-review { background: rgba(201,168,76,0.18); color: #9A6C18; }
+                .state-approved { background: rgba(63,157,88,0.15); color: #2F7D46; }
+                .state-rejected { background: rgba(185,28,28,0.13); color: #B91C1C; }
+                .state-development { background: rgba(59,130,246,0.14); color: #2563EB; }
+                .state-observed { background: rgba(234,138,31,0.16); color: #B86612; }
+                .state-finished { background: rgba(110,100,88,0.15); color: var(--muted); }
+                .state-default { background: rgba(110,100,88,0.13); color: var(--muted); }
+
+                .detail-panel {
+                    position: sticky;
+                    top: 1rem;
+                    border-radius: 1.2rem;
+                    overflow: hidden;
+                }
+
+                .empty-detail {
+                    padding: 1.5rem;
+                    text-align: center;
+                }
+
+                .empty-detail svg {
+                    margin: 0 auto 0.75rem;
+                    color: var(--gold-strong);
+                }
+
+                .empty-detail h3 {
+                    color: var(--text);
+                    font-size: 1rem;
+                    font-weight: 950;
+                }
+
+                .empty-detail p {
+                    margin-top: 0.35rem;
+                    color: var(--muted);
+                    font-size: 0.84rem;
+                    line-height: 1.55;
+                }
+
+                .detail-head {
+                    padding: 1rem;
+                    border-bottom: 1px solid var(--border);
+                    background: var(--surface-soft);
+                }
+
+                .detail-head h2 {
+                    margin: 0.45rem 0 0.75rem;
+                    color: var(--text);
+                    font-size: 1.08rem;
+                    font-weight: 950;
                     line-height: 1.25;
                 }
 
-                .soft-panel-text {
-                    margin-top: 0.65rem;
-                    color: #6E6458;
-                    font-size: 0.9rem;
-                    line-height: 1.72;
-                }
-
-                @media (prefers-color-scheme: dark) {
-                    .soft-panel {
-                        border-color: rgba(214,185,106,0.20);
-                        background:
-                            radial-gradient(circle at 100% 0%, rgba(214,185,106,0.12), transparent 34%),
-                            linear-gradient(145deg, rgba(67,34,50,0.92), rgba(43,22,32,0.96));
-                        box-shadow: 0 14px 38px rgba(18,7,12,0.28);
-                    }
-
-                    .soft-panel::before {
-                        background: linear-gradient(90deg, #D4849A, #D6B96A);
-                    }
-
-                    .soft-panel-label {
-                        color: #D6B96A;
-                    }
-
-                    .soft-panel-title {
-                        color: #F4EEE9;
-                    }
-
-                    .soft-panel-text {
-                        color: #D7C9C0;
-                    }
-                }
-
-                .role-card {
-                    margin-top: 1.1rem;
-                    display: flex;
-                    align-items: flex-start;
-                    gap: 0.85rem;
-                    border-radius: 1rem;
-                    border: 1px solid rgba(107,18,48,0.18);
-                    background: rgba(249,237,240,0.74);
+                .detail-body {
+                    display: grid;
+                    gap: 1rem;
                     padding: 1rem;
                 }
 
-                .role-card-icon {
-                    display: flex;
-                    height: 2.25rem;
-                    width: 2.25rem;
-                    flex-shrink: 0;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 0.75rem;
-                    background: rgba(107,18,48,0.10);
-                    color: #6B1230;
+                .detail-grid {
+                    display: grid;
+                    gap: 0.7rem;
                 }
 
-                .role-card-title {
-                    margin: 0;
-                    color: #6B1230;
-                    font-size: 0.95rem;
-                    font-weight: 900;
+                .detail-item {
+                    border: 1px solid var(--border);
+                    border-radius: 0.9rem;
+                    background: var(--surface-soft);
+                    padding: 0.75rem;
                 }
 
-                .role-card-text {
+                .detail-item span {
+                    display: block;
+                    color: var(--muted-2);
+                    font-size: 0.66rem;
+                    font-weight: 950;
+                    letter-spacing: 0.09em;
+                    text-transform: uppercase;
+                }
+
+                .detail-item strong {
+                    display: block;
                     margin-top: 0.25rem;
-                    color: #6E6458;
-                    font-size: 0.82rem;
-                    line-height: 1.6;
+                    color: var(--text);
+                    font-size: 0.86rem;
+                    font-weight: 900;
+                    overflow-wrap: anywhere;
                 }
 
-                @media (prefers-color-scheme: dark) {
-                    .role-card {
-                        border-color: rgba(212,132,154,0.34);
-                        background: rgba(212,132,154,0.10);
-                    }
-
-                    .role-card-icon {
-                        background: rgba(212,132,154,0.14);
-                        color: #D4849A;
-                    }
-
-                    .role-card-title {
-                        color: #E3A1B2;
-                    }
-
-                    .role-card-text {
-                        color: #D7C9C0;
-                    }
+                .detail-item p {
+                    margin-top: 0.25rem;
+                    color: var(--muted);
+                    font-size: 0.78rem;
+                    line-height: 1.5;
+                    overflow-wrap: anywhere;
                 }
 
-                .empty-panel {
-                    position: relative;
+                .reviewers {
                     display: flex;
-                    min-height: 100%;
-                    align-items: center;
-                    justify-content: center;
-                    overflow: hidden;
-                    border-radius: 1.25rem;
-                    border: 1px solid rgba(107,18,48,0.12);
-                    background:
-                        radial-gradient(circle at top right, rgba(201,168,76,0.22), transparent 40%),
-                        linear-gradient(145deg, rgba(255,255,255,0.82), rgba(246,238,220,0.80));
-                    padding: 1.5rem;
-                    text-align: center;
-                    box-shadow: 0 14px 38px rgba(107,18,48,0.08);
+                    flex-wrap: wrap;
+                    gap: 0.45rem;
+                    margin-top: 0.55rem;
                 }
 
-                .empty-panel::before {
-                    content: '';
-                    position: absolute;
-                    inset: 1rem;
-                    border-radius: 1rem;
-                    border: 1px dashed rgba(107,18,48,0.20);
-                    pointer-events: none;
-                }
-
-                .empty-panel-inner {
-                    position: relative;
-                    z-index: 1;
-                    max-width: 22rem;
-                }
-
-                .empty-icon {
+                .reviewer-chip {
                     display: inline-flex;
-                    height: 3.25rem;
-                    width: 3.25rem;
                     align-items: center;
-                    justify-content: center;
-                    border-radius: 1rem;
-                    border: 1px solid rgba(184,138,40,0.30);
-                    background: rgba(201,168,76,0.14);
-                    color: #9A6C18;
-                    margin-bottom: 0.9rem;
+                    gap: 0.35rem;
+                    border-radius: 999px;
+                    background: color-mix(in srgb, var(--gold) 16%, transparent);
+                    color: var(--gold-strong);
+                    padding: 0.35rem 0.55rem;
+                    font-size: 0.74rem;
+                    font-weight: 850;
                 }
 
-                .empty-title {
-                    color: #24151A;
-                    font-size: 0.98rem;
+                .timeline-title {
+                    margin-bottom: 0.75rem;
+                }
+
+                .timeline {
+                    display: grid;
+                    gap: 0.8rem;
+                }
+
+                .timeline-item {
+                    display: grid;
+                    grid-template-columns: 0.85rem minmax(0, 1fr);
+                    gap: 0.65rem;
+                }
+
+                .timeline-marker {
+                    width: 0.75rem;
+                    height: 0.75rem;
+                    margin-top: 0.25rem;
+                    border-radius: 999px;
+                    background: var(--guindo);
+                    box-shadow: 0 0 0 4px color-mix(in srgb, var(--guindo) 14%, transparent);
+                }
+
+                .timeline-card {
+                    border: 1px solid var(--border);
+                    border-radius: 0.9rem;
+                    background: var(--surface-soft);
+                    padding: 0.75rem;
+                }
+
+                .timeline-card strong {
+                    color: var(--text);
+                    font-size: 0.84rem;
+                    font-weight: 950;
+                }
+
+                .timeline-card p,
+                .timeline-card span {
+                    display: block;
+                    margin-top: 0.25rem;
+                    color: var(--muted);
+                    font-size: 0.76rem;
+                    line-height: 1.45;
+                }
+
+                .timeline-card em {
+                    display: block;
+                    margin-top: 0.45rem;
+                    color: var(--text);
+                    font-size: 0.78rem;
+                    line-height: 1.5;
+                }
+
+                .empty-soft {
+                    display: flex;
+                    gap: 0.65rem;
+                    align-items: flex-start;
+                    border: 1px dashed var(--border-strong);
+                    border-radius: 0.9rem;
+                    padding: 0.85rem;
+                    color: var(--muted);
+                }
+
+                .empty-soft strong {
+                    color: var(--text);
+                    font-size: 0.84rem;
                     font-weight: 900;
                 }
 
-                .empty-text {
-                    margin-top: 0.45rem;
-                    color: #6E6458;
-                    font-size: 0.83rem;
-                    line-height: 1.65;
+                .empty-soft p {
+                    margin-top: 0.2rem;
+                    font-size: 0.76rem;
+                    line-height: 1.5;
                 }
 
-                @media (prefers-color-scheme: dark) {
-                    .empty-panel {
-                        border-color: rgba(214,185,106,0.20);
-                        background:
-                            radial-gradient(circle at top right, rgba(214,185,106,0.14), transparent 40%),
-                            linear-gradient(145deg, rgba(53,27,40,0.95), rgba(43,22,32,0.96));
-                        box-shadow: 0 14px 38px rgba(18,7,12,0.24);
-                    }
-
-                    .empty-panel::before {
-                        border-color: rgba(214,185,106,0.22);
-                    }
-
-                    .empty-icon {
-                        border-color: rgba(214,185,106,0.32);
-                        background: rgba(214,185,106,0.10);
-                        color: #D6B96A;
-                    }
-
-                    .empty-title {
-                        color: #F4EEE9;
-                    }
-
-                    .empty-text {
-                        color: #A9978D;
-                    }
+                .sort-button:focus-visible,
+                .project-row:focus-visible,
+                .attention-button:focus-visible {
+                    outline: 3px solid color-mix(in srgb, var(--gold) 45%, transparent);
+                    outline-offset: 3px;
                 }
             `}</style>
 
             <div className="dashboard-page">
                 <div className="dashboard-shell">
-                    <section className="dashboard-hero">
-                        <div className="dashboard-hero-content">
+                    <section className="hero-panel">
+                        <div className="hero-grid">
                             <div>
-                                <div className="dashboard-eyebrow">
-                                    <IconSpark />
-                                    Plataforma Académica
+                                <div className="eyebrow">
+                                    <FolderKanban className="h-4 w-4" />
+                                    Seguimiento académico
                                 </div>
 
-                                <h1 className="dashboard-title">
-                                    Bienvenido,<br />
-                                    <span>{userName}</span>
-                                </h1>
+                                <h1 className="hero-title">{getMainTitle(role)}</h1>
 
-                                <p className="dashboard-description">
-                                    Accediste al panel principal de la plataforma académica de la Universidad Privada del Valle.
-                                    La información visible se organizará según tu rol y los permisos definidos para tu cuenta.
+                                <p className="hero-description">
+                                    {getDescription(role)}
                                 </p>
-
-                                <div className="dashboard-details-grid">
-                                    <div className="dashboard-detail-card is-role">
-                                        <div className="dashboard-detail-head">
-                                            <IconShield />
-                                            Rol actual
-                                        </div>
-                                        <div className="dashboard-detail-value">{roleLabel}</div>
-                                    </div>
-
-                                    <div className="dashboard-detail-card">
-                                        <div className="dashboard-detail-head">
-                                            <IconMail />
-                                            Correo registrado
-                                        </div>
-                                        <div className="dashboard-detail-value">{userEmail}</div>
-                                    </div>
-                                </div>
                             </div>
 
-                            <aside className="profile-card">
-                                <div>
-                                    <div className="profile-main">
-                                        <div className="profile-avatar">
-                                            {getInitials(userName)}
-                                        </div>
+                            <aside className="profile-box" aria-label="Información de sesión">
+                                <div className="profile-main">
+                                    <div className="profile-avatar">{getInitials(userName)}</div>
 
-                                        <div>
-                                            <p className="profile-name">{userName}</p>
-                                            <p className="profile-email">{userEmail}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="profile-status">
-                                        <span className="profile-status-dot" />
-                                        <span className="profile-status-text">
-                                            Sesión activa como {roleLabel}
-                                        </span>
+                                    <div>
+                                        <p className="profile-name">{userName}</p>
+                                        <p className="profile-email">{userEmail}</p>
                                     </div>
                                 </div>
 
-                                <p className="profile-note">
-                                    Este panel mostrará únicamente las opciones y módulos habilitados para tu perfil de usuario.
-                                </p>
+                                <div className="role-badge">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Sesión activa como {roleLabel}
+                                </div>
                             </aside>
                         </div>
                     </section>
 
-                    <section className="visual-strip">
-                        <div className="mini-card">
-                            <div className="mini-icon">
-                                <IconShield />
-                            </div>
-                            <div className="mini-label">Acceso</div>
-                            <div className="mini-value">Permisos definidos por rol</div>
-                        </div>
+                    <section className="kpi-grid" aria-label="Indicadores principales">
+                        <KpiCard
+                            icon={<FolderKanban className="h-4 w-4" />}
+                            label={coordinatorMode ? 'Proyectos activos' : 'Proyectos visibles'}
+                            value={summary.total_proyectos}
+                            note={coordinatorMode ? 'Total activo del sistema.' : 'Según tu perfil actual.'}
+                        />
 
-                        <div className="mini-card">
-                            <div className="mini-icon">
-                                <IconBook />
-                            </div>
-                            <div className="mini-label">Sistema</div>
-                            <div className="mini-value">Plataforma académica activa</div>
-                        </div>
+                        <KpiCard
+                            icon={<AlertTriangle className="h-4 w-4" />}
+                            label="Requieren atención"
+                            value={totalAtencion}
+                            note="Sin avance, en revisión u observados."
+                            tone={totalAtencion > 0 ? 'warning' : 'success'}
+                        />
 
-                        <div className="mini-card">
-                            <div className="mini-icon">
-                                <IconClock />
-                            </div>
-                            <div className="mini-label">Estado</div>
-                            <div className="mini-value">Sesión verificada</div>
-                        </div>
+                        <KpiCard
+                            icon={<Clock3 className="h-4 w-4" />}
+                            label="Sin avance"
+                            value={summary.sin_avance}
+                            note="Sin historial de estado registrado."
+                            tone={summary.sin_avance > 0 ? 'danger' : 'success'}
+                        />
+
+                        <KpiCard
+                            icon={<CheckCircle2 className="h-4 w-4" />}
+                            label="Concluidos"
+                            value={totalConcluidos}
+                            note={`${safePercent(totalConcluidos, summary.total_proyectos)}% del total visible.`}
+                            tone="success"
+                        />
                     </section>
 
-                    <section className="dashboard-content-grid">
-                        <div className="soft-panel">
-                            <p className="soft-panel-label">Panel por rol</p>
+                    {coordinatorMode && (
+                        <section className="coordinator-grid" aria-label="Panorama gráfico de coordinación">
+                            <article className="chart-panel">
+                                <div className="panel-head">
+                                    <div>
+                                        <div className="eyebrow">
+                                            <BarChart3 className="h-4 w-4" />
+                                            Gráfico de estados
+                                        </div>
+                                        <h2 className="panel-title">Distribución general de proyectos</h2>
+                                        <p className="panel-note">
+                                            Permite identificar concentración de proyectos por estado académico.
+                                        </p>
+                                    </div>
 
-                            <h2 className="soft-panel-title">
-                                Vista principal de {roleLabel}
-                            </h2>
-
-                            <p className="soft-panel-text">
-                                Este espacio queda reservado para el contenido funcional correspondiente al rol autenticado.
-                                Por ahora se muestra la identificación del usuario, su correo y el rol detectado por el sistema.
-                            </p>
-
-                            <div className="role-card">
-                                <div className="role-card-icon">
-                                    <IconShield />
+                                    <ShieldCheck className="h-5 w-5 text-[#9A6C18]" />
                                 </div>
 
+                                <div className="donut-wrap">
+                                    <div
+                                        className="donut"
+                                        style={{
+                                            '--donut-bg': getDonutGradient(
+                                                summary.por_estado || {},
+                                                summary.total_proyectos,
+                                            ),
+                                        } as React.CSSProperties}
+                                    >
+                                        <div className="donut-center">
+                                            <strong>{summary.total_proyectos}</strong>
+                                            <span>Proyectos</span>
+                                        </div>
+                                    </div>
+
+                                    <StateDistribution
+                                        porEstado={summary.por_estado || {}}
+                                        total={summary.total_proyectos}
+                                    />
+                                </div>
+                            </article>
+
+                            <article className="mini-panel">
+                                <div className="panel-head">
+                                    <div>
+                                        <div className="eyebrow">
+                                            <AlertTriangle className="h-4 w-4" />
+                                            Prioridad
+                                        </div>
+                                        <h2 className="panel-title">Proyectos para revisar</h2>
+                                        <p className="panel-note">
+                                            Lista generada por estados sensibles o ausencia de avance.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {proyectosAtencion.length === 0 ? (
+                                    <div className="empty-soft">
+                                        <CheckCircle2 className="h-5 w-5" />
+                                        <div>
+                                            <strong>Sin alertas operativas</strong>
+                                            <p>No hay proyectos marcados como prioridad.</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="attention-list">
+                                        {proyectosAtencion.map((proyecto) => (
+                                            <button
+                                                key={proyecto.id}
+                                                type="button"
+                                                className="attention-button"
+                                                onClick={() => setSelectedProjectId(proyecto.id)}
+                                            >
+                                                <strong>{proyecto.titulo}</strong>
+                                                <span>
+                                                    {estadoLabel(proyecto.estado)} · Último avance: {formatShortDate(proyecto.ultimo_avance?.fecha)}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </article>
+                        </section>
+                    )}
+
+                    <section className="content-grid">
+                        <div className="section-panel">
+                            <div className="section-head">
                                 <div>
-                                    <p className="role-card-title">
-                                        Rol detectado: {roleLabel}
-                                    </p>
-                                    <p className="role-card-text">
-                                        Las siguientes funciones se cargarán progresivamente según los permisos definidos para este perfil.
+                                    <h2 className="section-title">
+                                        {role === 'estudiante'
+                                            ? 'Mi proyecto'
+                                            : coordinatorMode
+                                                ? 'Repositorio operativo de proyectos'
+                                                : 'Proyectos vinculados a mi labor docente'}
+                                    </h2>
+                                    <p className="section-description">
+                                        Título del proyecto, estudiante, estado actual y fecha del último avance registrado.
                                     </p>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div className="empty-panel">
-                            <div className="empty-panel-inner">
-                                <div className="empty-icon">
-                                    <IconLayers />
+                                {(role === 'docente' || coordinatorMode) && (
+                                    <div className="sort-actions">
+                                        <SortButton
+                                            active={filters.sort_by === 'estado'}
+                                            label="Ordenar por estado"
+                                            direction={filters.sort_dir}
+                                            onClick={() => cambiarOrden('estado')}
+                                        />
+
+                                        <SortButton
+                                            active={filters.sort_by === 'ultimo_avance'}
+                                            label="Ordenar por último avance"
+                                            direction={filters.sort_dir}
+                                            onClick={() => cambiarOrden('ultimo_avance')}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {proyectos.length === 0 ? (
+                                <div className="mini-panel">
+                                    <div className="empty-soft">
+                                        <FolderKanban className="h-5 w-5" />
+                                        <div>
+                                            <strong>No hay proyectos para mostrar</strong>
+                                            <p>No se encontraron proyectos activos vinculados a tu usuario actual.</p>
+                                        </div>
+                                    </div>
                                 </div>
-
-                                <p className="empty-title">
-                                    Módulos en preparación
-                                </p>
-
-                                <p className="empty-text">
-                                    Este bloque se usará para accesos rápidos, actividades recientes o avisos importantes cuando los módulos sean implementados.
-                                </p>
-                            </div>
+                            ) : (
+                                <div className="project-list">
+                                    {proyectos.map((proyecto) => (
+                                        <ProjectRow
+                                            key={proyecto.id}
+                                            proyecto={proyecto}
+                                            selected={selectedProject?.id === proyecto.id}
+                                            onSelect={() => setSelectedProjectId(proyecto.id)}
+                                            coordinatorMode={coordinatorMode}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
+
+                        <ProjectDetail proyecto={selectedProject} />
                     </section>
+
+                    {coordinatorMode && proyectosRecientes.length > 0 && (
+                        <section className="mini-panel">
+                            <div className="panel-head">
+                                <div>
+                                    <div className="eyebrow">
+                                        <Activity className="h-4 w-4" />
+                                        Actividad reciente
+                                    </div>
+                                    <h2 className="panel-title">Últimos proyectos con avance</h2>
+                                    <p className="panel-note">
+                                        Acceso rápido a los proyectos con movimiento reciente.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="project-list">
+                                {proyectosRecientes.map((proyecto) => (
+                                    <ProjectRow
+                                        key={`recent-${proyecto.id}`}
+                                        proyecto={proyecto}
+                                        selected={selectedProject?.id === proyecto.id}
+                                        onSelect={() => setSelectedProjectId(proyecto.id)}
+                                        coordinatorMode={coordinatorMode}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    )}
                 </div>
             </div>
         </>

@@ -80,7 +80,7 @@ class ProyectoController extends Controller
             ],
             'periodos'         => PeriodoAcademico::select(['id', 'nombre'])
                                     ->orderByDesc('fecha_inicio')->get(),
-            'tutores'          => User::where('rol', 'tutor')
+            'tutores'          => User::where('rol', 'docente')
                                     ->select(['id', 'name'])->orderBy('name')->get(),
             // Contador para el badge del link a la papelera.
             'eliminados_count' => Proyecto::onlyTrashed()->count(),
@@ -130,7 +130,7 @@ class ProyectoController extends Controller
             ->orderByDesc('fecha_inicio')
             ->get();
 
-        $tutores = User::where('rol', 'tutor')
+        $tutores = User::where('rol', 'docente')
             ->where('activo', true)
             ->select(['id', 'name'])
             ->orderBy('name')
@@ -241,7 +241,7 @@ class ProyectoController extends Controller
             ->orderByDesc('fecha_inicio')
             ->get();
 
-        $tutores = User::where('rol', 'tutor')
+        $tutores = User::where('rol', 'docente')
             ->select(['id', 'name'])
             ->orderBy('name')
             ->get();
