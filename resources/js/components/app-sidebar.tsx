@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { LayoutGrid, UsersRound } from 'lucide-react';
+import { ClipboardList, LayoutGrid, UsersRound } from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -46,7 +46,9 @@ export function AppSidebar() {
         },
     ];
     
-    // 2. Elementos exclusivos SOLO para el coordinador
+    const puedeVerAuditoria = ['coordinador', 'admin'].includes(userRole);
+
+    // 2. Elementos administrativos
     if (userRole === 'coordinador') {
         mainNavItems.push(
             {
@@ -55,18 +57,24 @@ export function AppSidebar() {
                 icon: UsersRound,
             },
             {
-            title: 'Proyectos',
-            href: '/proyectos',
-            icon: FolderKanban,
+                title: 'Proyectos',
+                href: '/proyectos',
+                icon: FolderKanban,
             },
             {
                 title: 'Periodos',
                 href: '/periodos',
-                // Sugerencia: Puedes cambiar este ícono para que no sea igual al de proyectos
-                // import { Calendar } from 'lucide-react';
-                icon: FolderKanban, 
+                icon: FolderKanban,
             }
         );
+    }
+
+    if (puedeVerAuditoria) {
+        mainNavItems.push({
+            title: 'Auditoría',
+            href: '/auditoria',
+            icon: ClipboardList,
+        });
     }
     
     return (

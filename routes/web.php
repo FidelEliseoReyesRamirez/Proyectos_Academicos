@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditoriaController;
 use App\Http\Controllers\PeriodoAcademicoController;
 use App\Http\Controllers\ProyectoController;
 use App\Http\Controllers\UsuariosController;
@@ -24,6 +25,13 @@ Route::inertia('/', 'welcome', [
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'dashboard')->name('dashboard');
+
+    Route::middleware(['role:coordinador,admin'])->group(function () {
+        Route::get('auditoria', [AuditoriaController::class, 'index'])->name('auditoria.index');
+        Route::get('auditoria/{id}', [AuditoriaController::class, 'show'])
+            ->whereNumber('id')
+            ->name('auditoria.show');
+    });
 
     /*
     |--------------------------------------------------------------------------

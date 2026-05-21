@@ -147,6 +147,8 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      AUDITORIA_API_URL: http://sudosquad_auditoria_api:8081
     depends_on:
       sudosquad_db:
         condition: service_healthy
@@ -188,6 +190,8 @@ services:
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
 
+      AUDITORIA_API_URL: http://sudosquad_auditoria_api:8081
+
       AUDIT_DB_HOST: sudosquad_auditoria_db
       AUDIT_DB_PORT: 5432
       AUDIT_DB_DATABASE: sudosquad_auditoria_db
@@ -217,6 +221,8 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+
+      AUDITORIA_API_URL: http://sudosquad_auditoria_api:8081
 
       AUDIT_DB_HOST: sudosquad_auditoria_db
       AUDIT_DB_PORT: 5432

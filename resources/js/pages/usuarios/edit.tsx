@@ -28,6 +28,7 @@ const roleLabels: Record<string, string> = {
     tutor: 'Tutor',
     revisor: 'Revisor',
     coordinador: 'Coordinador',
+    admin: 'Administrador',
 };
 
 export default function UsuariosEdit({ usuario, roles, restricciones }: Props) {

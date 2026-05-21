@@ -35,6 +35,7 @@ const roleLabels: Record<string, string> = {
     tutor: 'Tutor',
     revisor: 'Revisor',
     coordinador: 'Coordinador',
+    admin: 'Administrador',
 };
 
 export default function UsuariosPapelera({ usuarios, filters, roles }: Props) {

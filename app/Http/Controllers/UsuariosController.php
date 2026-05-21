@@ -21,6 +21,7 @@ class UsuariosController extends Controller
         'tutor',
         'revisor',
         'coordinador',
+        'admin',
     ];
 
     public function index(Request $request): Response
@@ -328,6 +329,8 @@ class UsuariosController extends Controller
                         'rol' => $user->rol,
                         'activo' => (bool) $user->activo,
                         'telefono_contacto' => $user->telefono_contacto,
+                        'ip_address' => request()->ip(),
+                        'user_agent' => substr((string) request()->userAgent(), 0, 1000),
                         'usuario_accion' => $this->usuarioEvento(),
                     ], $datosAdicionales),
                 ],
