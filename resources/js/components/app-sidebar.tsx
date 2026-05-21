@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { ClipboardList, LayoutGrid, UsersRound } from 'lucide-react';
+import { ClipboardList, LayoutGrid, UsersRound, BookOpenCheck } from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -43,6 +43,11 @@ export function AppSidebar() {
             title: 'Dashboard',
             href: dashboard(),
             icon: LayoutGrid,
+        },
+        {
+            title: 'Seguimiento',
+            href: '/seguimiento',
+            icon: BookOpenCheck,
         },
     ];
     

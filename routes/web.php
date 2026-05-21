@@ -4,6 +4,7 @@ use App\Http\Controllers\AuditoriaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodoAcademicoController;
 use App\Http\Controllers\ProyectoController;
+use App\Http\Controllers\SeguimientoProyectoController;
 use App\Http\Controllers\UsuariosController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
@@ -33,6 +34,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->whereNumber('id')
             ->name('auditoria.show');
     });
+
+    Route::middleware(['role:estudiante,docente,coordinador,admin'])->group(function () {
+        Route::get('seguimiento', [SeguimientoProyectoController::class, 'index'])->name('seguimiento.index');
+        Route::get('seguimiento/{proyecto}', [SeguimientoProyectoController::class, 'show'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.show');
+    });
+
 
     /*
     |--------------------------------------------------------------------------
