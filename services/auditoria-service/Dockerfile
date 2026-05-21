@@ -13,6 +13,6 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY consume.php /app/consume.php
+COPY . /app
 
 CMD ["php", "/app/consume.php"]

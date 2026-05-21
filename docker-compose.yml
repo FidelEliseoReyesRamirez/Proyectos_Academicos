@@ -232,6 +232,31 @@ services:
       - sudosquad_net
 
   # -------------------------------------------------------
+  # API de consulta del microservicio de auditoria
+  # -------------------------------------------------------
+  sudosquad_auditoria_api:
+    build:
+      context: ./services/auditoria-service
+      dockerfile: Dockerfile
+    container_name: sudosquad_auditoria_api
+    restart: unless-stopped
+    working_dir: /app
+    ports:
+      - "8081:8081"
+    environment:
+      AUDIT_DB_HOST: sudosquad_auditoria_db
+      AUDIT_DB_PORT: 5432
+      AUDIT_DB_DATABASE: sudosquad_auditoria_db
+      AUDIT_DB_USERNAME: sudosquad_auditoria_user
+      AUDIT_DB_PASSWORD: sudosquad_auditoria_secret_2026
+    depends_on:
+      sudosquad_auditoria_db:
+        condition: service_healthy
+    networks:
+      - sudosquad_net
+    command: php -S 0.0.0.0:8081 /app/server.php
+
+  # -------------------------------------------------------
   # Vite / React — http://localhost:5173
   # -------------------------------------------------------
   sudosquad_vite:
