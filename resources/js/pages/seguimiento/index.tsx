@@ -20,6 +20,7 @@ type Proyecto = {
     modalidad: string;
     area_tematica?: string | null;
     updated_at?: string | null;
+    relacion_usuario: 'estudiante' | 'tutor' | 'revisor' | 'coordinador' | 'admin' | 'general';
     estudiante: Usuario;
     tutor: Usuario;
     revisores: Usuario[];
@@ -38,6 +39,8 @@ type SeguimientoData = {
     };
     summary: {
         total: number;
+        mis_tutoriados: number;
+        mis_revisiones: number;
         sin_entregas: number;
         con_observaciones: number;
         con_revisiones: number;
@@ -101,6 +104,28 @@ function formatRelative(value?: string | null): string {
     return formatDate(value);
 }
 
+function relacionLabel(relacion: Proyecto['relacion_usuario']): string {
+    const labels: Record<Proyecto['relacion_usuario'], string> = {
+        estudiante: 'Mi proyecto',
+        tutor: 'Mis tutorías',
+        revisor: 'Mis revisiones',
+        coordinador: 'Supervisión',
+        admin: 'Administración',
+        general: 'Seguimiento',
+    };
+
+    return labels[relacion] || 'Seguimiento';
+}
+
+function relacionClass(relacion: Proyecto['relacion_usuario']): string {
+    if (relacion === 'tutor') return 'is-tutor';
+    if (relacion === 'revisor') return 'is-revisor';
+    if (relacion === 'estudiante') return 'is-estudiante';
+    if (relacion === 'coordinador') return 'is-coordinador';
+
+    return 'is-general';
+}
+
 /* ─────────────────────────────────────────────────────────────
    Componente principal
    ───────────────────────────────────────────────────────────── */
@@ -117,17 +142,24 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
 
     /* Heurística 7 — búsqueda local en cliente (debounce no necesario, es instantánea) */
     const [search, setSearch] = useState('');
+    const [relationFilter, setRelationFilter] = useState<'todos' | 'tutor' | 'revisor'>('todos');
 
     const filteredProyectos = useMemo(() => {
         const q = search.trim().toLowerCase();
-        if (!q) return proyectos;
-        return proyectos.filter((p) =>
-            p.titulo.toLowerCase().includes(q) ||
-            p.codigo.toLowerCase().includes(q) ||
-            (p.estudiante?.name || '').toLowerCase().includes(q) ||
-            (p.tutor?.name || '').toLowerCase().includes(q),
-        );
-    }, [proyectos, search]);
+
+        return proyectos.filter((p) => {
+            const matchesRelation = relationFilter === 'todos' || p.relacion_usuario === relationFilter;
+            const matchesSearch = !q ||
+                p.titulo.toLowerCase().includes(q) ||
+                p.codigo.toLowerCase().includes(q) ||
+                relacionLabel(p.relacion_usuario).toLowerCase().includes(q) ||
+                (p.estudiante?.name || '').toLowerCase().includes(q) ||
+                (p.tutor?.name || '').toLowerCase().includes(q) ||
+                p.revisores.some((revisor) => (revisor?.name || '').toLowerCase().includes(q));
+
+            return matchesRelation && matchesSearch;
+        });
+    }, [proyectos, search, relationFilter]);
 
     const cambiarOrden = (sortBy: 'estado' | 'titulo' | 'ultimo_movimiento') => {
         const nextDirection = filters.sort_by === sortBy && filters.sort_dir === 'desc' ? 'asc' : 'desc';
@@ -141,11 +173,15 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
     /* Heurística 1 — título contextual al rol */
     const heroTitle = rol === 'estudiante'
         ? 'Tu proyecto de grado'
-        : 'Proyectos en seguimiento';
+        : rol === 'docente'
+          ? 'Mis tutorías y revisiones'
+          : 'Proyectos en seguimiento';
 
     const heroDescription = rol === 'estudiante'
         ? 'Aquí puedes ver el avance de tu proyecto, subir nuevas entregas y consultar las revisiones recibidas.'
-        : 'Selecciona un proyecto para revisar entregas, devolver archivos corregidos y consultar la línea de tiempo.';
+        : rol === 'docente'
+          ? 'Aquí puedes separar claramente los proyectos donde eres tutor y los proyectos donde participas como revisor.'
+          : 'Selecciona un proyecto para revisar entregas, devolver archivos corregidos y consultar la línea de tiempo.';
 
     return (
         <>
@@ -358,6 +394,69 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                     .search-input { border-color: rgba(214,185,106,0.14); background-color: #2B1620; color: #F4EEE9; }
                 }
 
+                .relation-tabs {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.5rem;
+                }
+
+                .relation-tab {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.38rem;
+                    height: 2.2rem;
+                    border: 1px solid rgba(107,18,48,0.14);
+                    border-radius: 999px;
+                    background: rgba(255,255,255,0.45);
+                    color: #6E6458;
+                    padding: 0 0.85rem;
+                    font-size: 0.76rem;
+                    font-weight: 900;
+                    cursor: pointer;
+                    transition: all .15s;
+                }
+
+                .relation-tab:hover {
+                    color: #6B1230;
+                    background: rgba(107,18,48,0.07);
+                    border-color: rgba(107,18,48,0.24);
+                }
+
+                .relation-tab.is-active {
+                    background: #6B1230;
+                    border-color: #6B1230;
+                    color: white;
+                    box-shadow: 0 8px 18px rgba(107,18,48,0.18);
+                }
+
+                .relation-tab.is-review.is-active {
+                    background: #9A6C18;
+                    border-color: #9A6C18;
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    .relation-tab {
+                        background: rgba(255,255,255,0.035);
+                        border-color: rgba(214,185,106,0.18);
+                        color: #D7C9C0;
+                    }
+                    .relation-tab:hover {
+                        color: #D6B96A;
+                        background: rgba(214,185,106,0.08);
+                        border-color: rgba(214,185,106,0.32);
+                    }
+                    .relation-tab.is-active {
+                        background: #D4849A;
+                        border-color: #D4849A;
+                        color: #2B1620;
+                    }
+                    .relation-tab.is-review.is-active {
+                        background: #D6B96A;
+                        border-color: #D6B96A;
+                        color: #2B1620;
+                    }
+                }
+
                 .sort-group {
                     display: flex; align-items: center; gap: 0.55rem;
                     flex-wrap: wrap;
@@ -429,6 +528,14 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                 }
 
                 .project-main { min-width: 0; }
+                .project-head {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 0.45rem;
+                    margin-bottom: 0.4rem;
+                }
+
                 .project-code {
                     display: inline-block;
                     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -439,7 +546,44 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                     background: rgba(154,108,24,0.10);
                     padding: 0.15rem 0.5rem;
                     border-radius: 0.45rem;
-                    margin-bottom: 0.4rem;
+                }
+
+                .role-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.28rem;
+                    border-radius: 999px;
+                    padding: 0.18rem 0.55rem;
+                    font-size: 0.68rem;
+                    font-weight: 950;
+                    letter-spacing: 0.02em;
+                    border: 1px solid transparent;
+                }
+
+                .role-badge.is-tutor {
+                    color: #6B1230;
+                    background: rgba(107,18,48,0.10);
+                    border-color: rgba(107,18,48,0.16);
+                }
+
+                .role-badge.is-revisor {
+                    color: #9A6C18;
+                    background: rgba(154,108,24,0.13);
+                    border-color: rgba(154,108,24,0.20);
+                }
+
+                .role-badge.is-estudiante {
+                    color: #15803D;
+                    background: rgba(21,128,61,0.11);
+                    border-color: rgba(21,128,61,0.18);
+                }
+
+                .role-badge.is-coordinador,
+                .role-badge.is-admin,
+                .role-badge.is-general {
+                    color: #6E6458;
+                    background: rgba(110,100,88,0.10);
+                    border-color: rgba(110,100,88,0.16);
                 }
                 @media (prefers-color-scheme: dark) {
                     .project-code { color: #D6B96A; background: rgba(214,185,106,0.12); }
@@ -641,6 +785,32 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                             </div>
                         </div>
 
+                        {rol === 'docente' && (
+                            <>
+                                <div className="kpi-card tone-info">
+                                    <div className="kpi-icon">
+                                        <BookOpenCheck className="h-5 w-5" />
+                                    </div>
+                                    <div className="kpi-body">
+                                        <span>Mis tutorías</span>
+                                        <strong>{summary.mis_tutoriados}</strong>
+                                        <p>Proyectos donde eres tutor</p>
+                                    </div>
+                                </div>
+
+                                <div className="kpi-card">
+                                    <div className="kpi-icon">
+                                        <FileCheck2 className="h-5 w-5" />
+                                    </div>
+                                    <div className="kpi-body">
+                                        <span>Mis revisiones</span>
+                                        <strong>{summary.mis_revisiones}</strong>
+                                        <p>Proyectos donde eres revisor</p>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
                         <div className={`kpi-card ${summary.sin_entregas > 0 ? 'tone-warning' : 'tone-success'}`}>
                             <div className="kpi-icon">
                                 {summary.sin_entregas > 0 ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
@@ -700,6 +870,32 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                                     </button>
                                 )}
                             </div>
+
+                            {rol === 'docente' && (
+                                <div className="relation-tabs" aria-label="Filtrar por relación académica">
+                                    <button
+                                        type="button"
+                                        className={`relation-tab ${relationFilter === 'todos' ? 'is-active' : ''}`}
+                                        onClick={() => setRelationFilter('todos')}
+                                    >
+                                        Todos
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`relation-tab ${relationFilter === 'tutor' ? 'is-active' : ''}`}
+                                        onClick={() => setRelationFilter('tutor')}
+                                    >
+                                        Mis tutorías
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`relation-tab is-review ${relationFilter === 'revisor' ? 'is-active' : ''}`}
+                                        onClick={() => setRelationFilter('revisor')}
+                                    >
+                                        Mis revisiones
+                                    </button>
+                                </div>
+                            )}
 
                             <div className="sort-group">
                                 <span className="sort-label">
@@ -772,6 +968,9 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                                     {search && (
                                         <> para "<strong>{search}</strong>"</>
                                     )}
+                                    {rol === 'docente' && relationFilter !== 'todos' && (
+                                        <> en <strong>{relationFilter === 'tutor' ? 'Mis tutorías' : 'Mis revisiones'}</strong></>
+                                    )}
                                 </span>
                             </div>
 
@@ -787,7 +986,12 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                                             title={`Abrir seguimiento de ${proyecto.titulo}`}
                                         >
                                             <div className="project-main">
-                                                <span className="project-code">{proyecto.codigo}</span>
+                                                <div className="project-head">
+                                                    <span className="project-code">{proyecto.codigo}</span>
+                                                    <span className={`role-badge ${relacionClass(proyecto.relacion_usuario)}`}>
+                                                        {relacionLabel(proyecto.relacion_usuario)}
+                                                    </span>
+                                                </div>
                                                 <div className="project-title">{proyecto.titulo}</div>
 
                                                 <div className="project-people">

@@ -53,9 +53,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->whereNumber('proyecto')
             ->name('seguimiento.archivo-revision.store');
 
+        Route::patch('seguimiento/{proyecto}/tutor/solicitar-correcciones', [SeguimientoProyectoController::class, 'tutorSolicitarCorrecciones'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.tutor.correcciones');
+
+        Route::patch('seguimiento/{proyecto}/tutor/derivar-revision', [SeguimientoProyectoController::class, 'tutorDerivarRevision'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.tutor.derivar');
+
         Route::get('seguimiento/{proyecto}/archivos/{archivo}/descargar', [SeguimientoProyectoController::class, 'downloadArchivo'])
             ->whereNumber(['proyecto', 'archivo'])
             ->name('seguimiento.archivos.download');
+
+        Route::post('seguimiento/{proyecto}/archivos/{archivo}/reemplazar', [SeguimientoProyectoController::class, 'replaceArchivo'])
+            ->whereNumber(['proyecto', 'archivo'])
+            ->name('seguimiento.archivos.replace');
     });
 
 

@@ -69,12 +69,45 @@ function procesarMensaje(?string $rawPayload): void
 
     $event = $payload['event'] ?? null;
 
-    match ($event) {
-        'proyecto.registrado' => procesarProyectoRegistrado($payload),
-        'proyecto.estado_actualizado' => procesarProyectoEstadoActualizado($payload),
-        'proyecto.entrega_subida' => procesarProyectoEntregaSubida($payload),
-        default => print "Evento ignorado: {$event}\n",
-    };
+    switch ($event) {
+        case 'proyecto.registrado':
+            procesarProyectoRegistrado($payload);
+            break;
+
+        case 'proyecto.estado_actualizado':
+            procesarProyectoEstadoActualizado($payload);
+            break;
+
+        case 'proyecto.entrega_subida':
+            procesarProyectoEntregaSubida($payload);
+            break;
+
+        case 'proyecto.correcciones_solicitadas':
+            procesarProyectoCorreccionesSolicitadas($payload);
+            break;
+
+        case 'proyecto.derivado_revision':
+            procesarProyectoDerivadoRevision($payload);
+            break;
+
+        case 'proyecto.archivo_revision_subido':
+        case 'proyecto.revision_devuelta':
+        case 'proyecto.revision_registrada':
+            procesarProyectoRevisionDevuelta($payload);
+            break;
+
+        case 'proyecto.documento_trabajo_actualizado':
+            procesarDocumentoTrabajoActualizado($payload);
+            break;
+
+        case 'proyecto.archivo_reemplazado':
+            procesarArchivoReemplazado($payload);
+            break;
+
+        default:
+            print "Evento ignorado: {$event}\n";
+            break;
+    }
 }
 
 function procesarProyectoRegistrado(array $payload): void
@@ -132,9 +165,9 @@ function procesarProyectoEntregaSubida(array $payload): void
 
     $destinatarios = [];
 
-    if (is_array($tutor) && !empty($tutor['email'])) {
-        $destinatarios[$tutor['email']] = $tutor['nombre'] ?? 'Tutor';
-    }
+    agregarDestinatario($destinatarios, $estudiante, 'Estudiante');
+    agregarDestinatario($destinatarios, $tutor, 'Tutor');
+
 
     foreach ($revisores as $revisor) {
         if (is_array($revisor) && !empty($revisor['email'])) {
@@ -200,6 +233,266 @@ function crearCuerpoEntregaSubida(
         <p>Ingrese al sistema para revisar el documento y registrar observaciones o devolver el archivo revisado.</p>
     ";
 }
+
+
+function procesarProyectoCorreccionesSolicitadas(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $entrega = $data['entrega'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+    $tutor = $data['tutor'] ?? [];
+    $revisores = is_array($data['revisores'] ?? null) ? $data['revisores'] : [];
+    $comentario = $data['comentario'] ?? 'Sin comentario registrado.';
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $tituloEntrega = $entrega['titulo'] ?? 'Entrega no especificada';
+    $version = $entrega['numero_version'] ?? 'N/D';
+
+    $destinatarios = destinatariosAcademicos($estudiante, $tutor, $revisores);
+
+    $subject = "[Seguimiento] Correcciones solicitadas - {$codigo}";
+    $body = crearCuerpoEventoAcademico(
+        'Correcciones solicitadas por el tutor',
+        'El tutor solicitó correcciones sobre una entrega del proyecto.',
+        [
+            'Proyecto' => "{$codigo} - {$tituloProyecto}",
+            'Entrega' => "Versión {$version} - {$tituloEntrega}",
+            'Comentario' => $comentario,
+        ],
+        'Ingrese al sistema para revisar las observaciones y continuar el flujo académico.'
+    );
+
+    enviarNotificacionMultiple('proyecto.correcciones_solicitadas', $destinatarios, $subject, $body);
+}
+
+function procesarProyectoDerivadoRevision(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $entrega = $data['entrega'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+    $tutor = $data['tutor'] ?? [];
+    $revisores = is_array($data['revisores'] ?? null) ? $data['revisores'] : [];
+    $comentario = $data['comentario'] ?? 'Sin comentario registrado.';
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $tituloEntrega = $entrega['titulo'] ?? 'Entrega no especificada';
+    $version = $entrega['numero_version'] ?? 'N/D';
+
+    $destinatarios = destinatariosAcademicos($estudiante, $tutor, $revisores);
+
+    $subject = "[Seguimiento] Proyecto derivado a revisores - {$codigo}";
+    $body = crearCuerpoEventoAcademico(
+        'Proyecto derivado a revisión',
+        'El tutor derivó una entrega para revisión por revisores asignados.',
+        [
+            'Proyecto' => "{$codigo} - {$tituloProyecto}",
+            'Entrega' => "Versión {$version} - {$tituloEntrega}",
+            'Comentario del tutor' => $comentario,
+        ],
+        'Ingrese al sistema para revisar el avance, devolver observaciones o subir el documento revisado.'
+    );
+
+    enviarNotificacionMultiple('proyecto.derivado_revision', $destinatarios, $subject, $body);
+}
+
+function procesarProyectoRevisionDevuelta(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $entrega = $data['entrega'] ?? [];
+    $archivo = $data['archivo'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+    $tutor = $data['tutor'] ?? [];
+    $revisores = is_array($data['revisores'] ?? null) ? $data['revisores'] : [];
+    $revision = $data['revision'] ?? [];
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $tituloEntrega = $entrega['titulo'] ?? 'Entrega no especificada';
+    $version = $entrega['numero_version'] ?? 'N/D';
+    $resultado = $revision['resultado'] ?? ($data['resultado'] ?? 'sin_resultado');
+    $comentario = $revision['comentario'] ?? ($data['comentario'] ?? 'Sin comentario registrado.');
+    $archivoNombre = $archivo['nombre_original'] ?? 'archivo revisado no definido';
+
+    $destinatarios = destinatariosAcademicos($estudiante, $tutor, $revisores);
+
+    $subject = "[Seguimiento] Revisión devuelta - {$codigo}";
+    $body = crearCuerpoEventoAcademico(
+        'Revisión devuelta por revisor',
+        'Un revisor devolvió el documento revisado dentro del sistema.',
+        [
+            'Proyecto' => "{$codigo} - {$tituloProyecto}",
+            'Entrega' => "Versión {$version} - {$tituloEntrega}",
+            'Resultado' => labelHumano($resultado),
+            'Archivo revisado' => $archivoNombre,
+            'Comentario' => $comentario,
+        ],
+        'Ingrese al sistema para consultar el documento revisado y continuar el flujo académico.'
+    );
+
+    enviarNotificacionMultiple('proyecto.revision_devuelta', $destinatarios, $subject, $body);
+}
+
+function procesarDocumentoTrabajoActualizado(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $documento = $data['documento_trabajo'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+    $tutor = $data['tutor'] ?? [];
+    $revisores = is_array($data['revisores'] ?? null) ? $data['revisores'] : [];
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $tituloDocumento = $documento['titulo'] ?? 'Documento de trabajo';
+
+    $destinatarios = destinatariosAcademicos($estudiante, $tutor, $revisores);
+
+    $subject = "[Seguimiento] Documento de trabajo actualizado - {$codigo}";
+    $body = crearCuerpoEventoAcademico(
+        'Documento de trabajo actualizado',
+        'Se actualizó el documento principal de trabajo del proyecto.',
+        [
+            'Proyecto' => "{$codigo} - {$tituloProyecto}",
+            'Documento' => $tituloDocumento,
+        ],
+        'Ingrese al sistema para consultar el enlace vigente del documento de trabajo.'
+    );
+
+    enviarNotificacionMultiple('proyecto.documento_trabajo_actualizado', $destinatarios, $subject, $body);
+}
+
+function procesarArchivoReemplazado(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $archivoAnterior = $data['archivo_anterior'] ?? [];
+    $archivoNuevo = $data['archivo_nuevo'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+    $tutor = $data['tutor'] ?? [];
+    $revisores = is_array($data['revisores'] ?? null) ? $data['revisores'] : [];
+    $motivo = $data['motivo'] ?? 'Sin motivo registrado.';
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $nombreAnterior = $archivoAnterior['nombre_original'] ?? 'archivo anterior';
+    $nombreNuevo = $archivoNuevo['nombre_original'] ?? 'archivo nuevo';
+
+    $destinatarios = destinatariosAcademicos($estudiante, $tutor, $revisores);
+
+    $subject = "[Seguimiento] Archivo reemplazado - {$codigo}";
+    $body = crearCuerpoEventoAcademico(
+        'Archivo reemplazado',
+        'Se reemplazó un archivo dentro del flujo de seguimiento académico.',
+        [
+            'Proyecto' => "{$codigo} - {$tituloProyecto}",
+            'Archivo anterior' => $nombreAnterior,
+            'Archivo nuevo' => $nombreNuevo,
+            'Motivo' => $motivo,
+        ],
+        'El archivo anterior queda registrado como reemplazado para mantener trazabilidad.'
+    );
+
+    enviarNotificacionMultiple('proyecto.archivo_reemplazado', $destinatarios, $subject, $body);
+}
+
+function destinatariosAcademicos(?array $estudiante, ?array $tutor, array $revisores): array
+{
+    $destinatarios = [];
+
+    agregarDestinatario($destinatarios, $estudiante, 'Estudiante');
+    agregarDestinatario($destinatarios, $tutor, 'Tutor');
+
+    foreach ($revisores as $revisor) {
+        agregarDestinatario($destinatarios, is_array($revisor) ? $revisor : null, 'Revisor');
+    }
+
+    return $destinatarios;
+}
+
+function agregarDestinatario(array &$destinatarios, ?array $usuario, string $fallbackName): void
+{
+    if (!is_array($usuario)) {
+        return;
+    }
+
+    $email = trim((string) ($usuario['email'] ?? ''));
+
+    if ($email === '') {
+        return;
+    }
+
+    if (str_ends_with($email, '.test') || str_ends_with($email, '@example.com') || str_ends_with($email, '@example.test')) {
+        echo "Destinatario omitido por correo de prueba: {$email}\n";
+        return;
+    }
+
+    $destinatarios[$email] = $usuario['nombre'] ?? $usuario['name'] ?? $fallbackName;
+}
+
+function enviarNotificacionMultiple(string $event, array $destinatarios, string $subject, string $body): void
+{
+    echo "\n========================================\n";
+    echo "Evento recibido: {$event}\n";
+    echo "Destinatarios: " . (count($destinatarios) ? implode(', ', array_keys($destinatarios)) : 'sin destinatarios') . "\n";
+
+    if (count($destinatarios) === 0) {
+        echo "No se envió correo: no hay destinatarios con email.\n";
+        echo "========================================\n\n";
+        return;
+    }
+
+    foreach ($destinatarios as $email => $nombre) {
+        try {
+            enviarCorreoSmtp($email, $nombre, $subject, $body);
+            echo "Correo enviado a {$email}\n";
+        } catch (Throwable $exception) {
+            echo "Error enviando correo a {$email}: {$exception->getMessage()}\n";
+        }
+    }
+
+    echo "========================================\n\n";
+}
+
+function crearCuerpoEventoAcademico(string $titulo, string $descripcion, array $datos, string $cierre): string
+{
+    $rows = '';
+
+    foreach ($datos as $label => $value) {
+        $rows .= '<tr><td><strong>' . eHtml((string) $label) . ':</strong></td><td>' . eHtml((string) $value) . '</td></tr>';
+    }
+
+    return '
+        <h2>' . eHtml($titulo) . '</h2>
+        <p>' . eHtml($descripcion) . '</p>
+
+        <table cellpadding="6" cellspacing="0" border="0">
+            ' . $rows . '
+        </table>
+
+        <p>' . eHtml($cierre) . '</p>
+    ';
+}
+
+function labelHumano(string $value): string
+{
+    return ucfirst(str_replace('_', ' ', $value));
+}
+
+function eHtml(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
 
 function enviarCorreoSmtp(string $toEmail, string $toName, string $subject, string $htmlBody): void
 {

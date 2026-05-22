@@ -16,6 +16,10 @@ type Usuario = { id: number; name: string; email: string; rol: string; } | null;
 type Archivo = {
     id: number;
     tipo_archivo: string;
+    estado?: string;
+    reemplazado_por_archivo_id?: number | null;
+    reemplazado_at?: string | null;
+    motivo_reemplazo?: string | null;
     nombre_original: string;
     ruta_almacenamiento: string;
     mime_type?: string | null;
@@ -68,6 +72,8 @@ type SeguimientoData = {
         puede_subir_entrega: boolean;
         puede_observar: boolean;
         puede_revisar: boolean;
+        puede_accion_tutor: boolean;
+        puede_devolver_revision: boolean;
         puede_administrar: boolean;
     };
 };
@@ -78,10 +84,9 @@ type Props = { seguimientoData: SeguimientoData; };
    Catálogos
    ───────────────────────────────────────────────────────────── */
 const resultadoLabels: Record<string, string> = {
-    observado: 'Observado',
     aprobado: 'Aprobado',
-    rechazado: 'Rechazado',
     requiere_correcciones: 'Requiere correcciones',
+    rechazado: 'Rechazado',
 };
 
 const RESULTADO_COLOR: Record<string, string> = {
@@ -98,7 +103,7 @@ const ESTADO_COLOR: Record<string, string> = {
 };
 
 const MAX_FILE_MB = 200;
-const ACCEPTED_TYPES = '.doc,.docx,.pdf,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const ACCEPTED_TYPES = '.pdf,.doc,.docx,.xls,.xlsx';
 
 /* ─────────────────────────────────────────────────────────────
    Helpers
@@ -220,6 +225,7 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
     /* Modales */
     const [showEntrega, setShowEntrega]   = useState(false);
     const [showRevision, setShowRevision] = useState(false);
+    const [showTutorDecision, setShowTutorDecision] = useState(false);
     const [showDoc, setShowDoc]           = useState(false);
 
     /* Forms */
@@ -245,13 +251,55 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
         if (file.size > MAX_FILE_MB * 1024 * 1024) {
             return `El archivo supera ${MAX_FILE_MB} MB.`;
         }
-        const validExt = /\.(pdf|doc|docx)$/i.test(file.name);
-        if (!validExt) return 'Solo se aceptan archivos PDF, DOC o DOCX.';
+        const validExt = /\.(pdf|doc|docx|xls|xlsx)$/i.test(file.name);
+        if (!validExt) return 'Solo se aceptan archivos PDF, DOC, DOCX, XLS o XLSX.';
         return null;
     };
 
+    const tutorDecisionForm = useForm<{
+        entrega_id: string;
+        decision: 'correcciones' | 'derivar';
+        comentario: string;
+    }>({
+        entrega_id: proyecto.entregas[0]?.id ? String(proyecto.entregas[0].id) : '',
+        decision: 'correcciones',
+        comentario: '',
+    });
+
+    const replaceArchivoForm = useForm<{
+        archivo: File | null;
+        motivo_reemplazo: string;
+    }>({
+        archivo: null,
+        motivo_reemplazo: '',
+    });
+
     const [entregaFileError,  setEntregaFileError]  = useState<string | null>(null);
     const [revisionFileError, setRevisionFileError] = useState<string | null>(null);
+    const [replaceFileError, setReplaceFileError] = useState<string | null>(null);
+    const [selectedArchivoReplace, setSelectedArchivoReplace] = useState<Archivo | null>(null);
+
+    const puedeReemplazarArchivo = (archivo: Archivo): boolean => {
+        if ((archivo.estado || 'activo') !== 'activo') {
+            return false;
+        }
+
+        if (permisos.puede_subir_entrega && archivo.tipo_archivo === 'avance_estudiante') {
+            return true;
+        }
+
+        if (permisos.puede_devolver_revision && archivo.tipo_archivo === 'documento_revisado') {
+            return true;
+        }
+
+        return permisos.puede_administrar;
+    };
+
+    const abrirReemplazoArchivo = (archivo: Archivo) => {
+        setSelectedArchivoReplace(archivo);
+        replaceArchivoForm.reset();
+        setReplaceFileError(null);
+    };
 
     /* Submits */
     const submitDocumento = (e: FormEvent) => {
@@ -277,10 +325,55 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
         });
     };
 
+    const submitTutorDecision = (e: FormEvent) => {
+        e.preventDefault();
+
+        const url = tutorDecisionForm.data.decision === 'correcciones'
+            ? `/seguimiento/${proyecto.id}/tutor/solicitar-correcciones`
+            : `/seguimiento/${proyecto.id}/tutor/derivar-revision`;
+
+        tutorDecisionForm.patch(url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                tutorDecisionForm.reset('comentario');
+                setShowTutorDecision(false);
+            },
+        });
+    };
+
+    const submitReplaceArchivo = (e: FormEvent) => {
+        e.preventDefault();
+
+        if (!selectedArchivoReplace) {
+            return;
+        }
+
+        const err = validateFile(replaceArchivoForm.data.archivo);
+
+        if (err) {
+            setReplaceFileError(err);
+            return;
+        }
+
+        replaceArchivoForm.post(`/seguimiento/${proyecto.id}/archivos/${selectedArchivoReplace.id}/reemplazar`, {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                replaceArchivoForm.reset();
+                setSelectedArchivoReplace(null);
+                setReplaceFileError(null);
+            },
+        });
+    };
+
     const submitRevision = (e: FormEvent) => {
         e.preventDefault();
         const err = validateFile(revisionForm.data.archivo);
         if (err) { setRevisionFileError(err); return; }
+        if (!permisos.puede_devolver_revision) {
+            return;
+        }
+
         revisionForm.post(`/seguimiento/${proyecto.id}/archivo-revision`, {
             forceFormData: true,
             preserveScroll: true,
@@ -307,7 +400,16 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                 cta: { label: 'Subir avance', icon: <UploadCloud className="h-4 w-4" />, onClick: () => setShowEntrega(true) },
             };
         }
-        if (permisos.puede_revisar && proyecto.entregas.length > 0) {
+        if (permisos.puede_accion_tutor && proyecto.entregas.length > 0) {
+            return {
+                eyebrow: 'Tu próximo paso',
+                titulo: 'Hay entregas esperando decisión del tutor',
+                texto: `${proyecto.estudiante?.name || 'El estudiante'} envió "${ultimaEntrega?.titulo}". Decide si debe corregir o si esta versión puede pasar a revisión por revisores.`,
+                cta: { label: 'Decisión del tutor', icon: <BookOpenCheck className="h-4 w-4" />, onClick: () => setShowTutorDecision(true) },
+            };
+        }
+
+        if (permisos.puede_devolver_revision && proyecto.entregas.length > 0) {
             return {
                 eyebrow: 'Tu próximo paso',
                 titulo: 'Hay entregas esperando tu revisión',
@@ -430,7 +532,7 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                             </div>
                         )}
-                        <span className="field-help">Formatos: PDF, DOC, DOCX · Máximo {MAX_FILE_MB} MB</span>
+                        <span className="field-help">Formatos: PDF, DOC, DOCX, XLS, XLSX · Máximo {MAX_FILE_MB} MB</span>
                         {entregaFileError && <div className="error-text"><AlertTriangle className="h-3.5 w-3.5" /> {entregaFileError}</div>}
                         {entregaForm.errors.archivo && <div className="error-text">{entregaForm.errors.archivo}</div>}
                     </div>
@@ -461,7 +563,83 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
             </FormDrawer>
 
             <FormDrawer
-                open={showRevision}
+                open={showTutorDecision}
+                title="Decisión del tutor"
+                subtitle="Define si la entrega vuelve al estudiante o pasa a revisión por revisores."
+                icon={<BookOpenCheck className="h-5 w-5" />}
+                onClose={() => !tutorDecisionForm.processing && setShowTutorDecision(false)}
+                processing={tutorDecisionForm.processing}
+            >
+                <form onSubmit={submitTutorDecision} className="space-y-4">
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="tutor-entrega">Entrega evaluada *</label>
+                        <select
+                            id="tutor-entrega"
+                            className="custom-input"
+                            value={tutorDecisionForm.data.entrega_id}
+                            onChange={(e) => tutorDecisionForm.setData('entrega_id', e.target.value)}
+                        >
+                            {proyecto.entregas.map((entrega) => (
+                                <option key={entrega.id} value={String(entrega.id)}>
+                                    V{entrega.numero_version}: {entrega.titulo}
+                                </option>
+                            ))}
+                        </select>
+                        {tutorDecisionForm.errors.entrega_id && <div className="error-text">{tutorDecisionForm.errors.entrega_id}</div>}
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="tutor-decision">Decisión *</label>
+                        <select
+                            id="tutor-decision"
+                            className="custom-input"
+                            value={tutorDecisionForm.data.decision}
+                            onChange={(e) => tutorDecisionForm.setData('decision', e.target.value as 'correcciones' | 'derivar')}
+                        >
+                            <option value="correcciones">Solicitar correcciones al estudiante</option>
+                            <option value="derivar">Derivar esta versión a revisores</option>
+                        </select>
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="tutor-comentario">
+                            {tutorDecisionForm.data.decision === 'correcciones'
+                                ? 'Correcciones para el estudiante *'
+                                : 'Comentario para revisores'}
+                        </label>
+                        <textarea
+                            id="tutor-comentario"
+                            className="custom-input"
+                            rows={4}
+                            value={tutorDecisionForm.data.comentario}
+                            onChange={(e) => tutorDecisionForm.setData('comentario', e.target.value)}
+                            placeholder={
+                                tutorDecisionForm.data.decision === 'correcciones'
+                                    ? 'Ej. Corregir objetivos, alcance y justificación antes de continuar.'
+                                    : 'Ej. La versión está lista para revisión técnica y metodológica.'
+                            }
+                        />
+                        {tutorDecisionForm.errors.comentario && <div className="error-text">{tutorDecisionForm.errors.comentario}</div>}
+                    </div>
+
+                    <div className="drawer-actions">
+                        <button type="button" className="btn-secondary" onClick={() => setShowTutorDecision(false)} disabled={tutorDecisionForm.processing}>
+                            Cancelar
+                        </button>
+                        <button type="submit" className="btn-primary" disabled={tutorDecisionForm.processing}>
+                            <BookOpenCheck className="h-4 w-4 mr-1" />
+                            {tutorDecisionForm.processing
+                                ? 'Registrando decisión...'
+                                : tutorDecisionForm.data.decision === 'correcciones'
+                                  ? 'Solicitar correcciones'
+                                  : 'Derivar a revisores'}
+                        </button>
+                    </div>
+                </form>
+            </FormDrawer>
+
+            <FormDrawer
+                open={showRevision && permisos.puede_devolver_revision}
                 title="Devolver revisión"
                 subtitle="Sube el documento con correcciones y comparte tu resumen."
                 icon={<FileCheck2 className="h-5 w-5" />}
@@ -547,6 +725,78 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                         <button type="submit" className="btn-primary" disabled={revisionForm.processing || !!revisionFileError || !revisionForm.data.archivo}>
                             <FileCheck2 className="h-4 w-4 mr-1" />
                             {revisionForm.processing ? 'Enviando...' : 'Devolver revisión'}
+                        </button>
+                    </div>
+                </form>
+            </FormDrawer>
+
+            <FormDrawer
+                open={!!selectedArchivoReplace}
+                title="Reemplazar archivo"
+                subtitle="El archivo anterior no se elimina; queda marcado como reemplazado para mantener trazabilidad."
+                icon={<UploadCloud className="h-5 w-5" />}
+                onClose={() => !replaceArchivoForm.processing && setSelectedArchivoReplace(null)}
+                processing={replaceArchivoForm.processing}
+            >
+                <form onSubmit={submitReplaceArchivo} className="space-y-4">
+                    {selectedArchivoReplace && (
+                        <div className="file-preview">
+                            <FileText className="h-4 w-4" />
+                            <div className="flex-1 min-w-0">
+                                <strong className="truncate">{selectedArchivoReplace.nombre_original}</strong>
+                                <span>Archivo actual que será reemplazado</span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="replace-file">Nuevo archivo *</label>
+                        <input
+                            id="replace-file"
+                            type="file"
+                            className="custom-input file-input"
+                            accept={ACCEPTED_TYPES}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0] || null;
+                                replaceArchivoForm.setData('archivo', file);
+                                setReplaceFileError(validateFile(file));
+                            }}
+                        />
+                        {replaceArchivoForm.data.archivo && !replaceFileError && (
+                            <div className="file-preview">
+                                <FileText className="h-4 w-4" />
+                                <div className="flex-1 min-w-0">
+                                    <strong className="truncate">{replaceArchivoForm.data.archivo.name}</strong>
+                                    <span>{formatBytes(replaceArchivoForm.data.archivo.size)}</span>
+                                </div>
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            </div>
+                        )}
+                        <span className="field-help">Formatos: PDF, DOC, DOCX, XLS, XLSX · Máximo {MAX_FILE_MB} MB</span>
+                        {replaceFileError && <div className="error-text"><AlertTriangle className="h-3.5 w-3.5" /> {replaceFileError}</div>}
+                        {replaceArchivoForm.errors.archivo && <div className="error-text">{replaceArchivoForm.errors.archivo}</div>}
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="replace-motivo">Motivo del reemplazo *</label>
+                        <textarea
+                            id="replace-motivo"
+                            className="custom-input"
+                            rows={3}
+                            value={replaceArchivoForm.data.motivo_reemplazo}
+                            onChange={(e) => replaceArchivoForm.setData('motivo_reemplazo', e.target.value)}
+                            placeholder="Ej. Subí una versión incorrecta del documento."
+                        />
+                        {replaceArchivoForm.errors.motivo_reemplazo && <div className="error-text">{replaceArchivoForm.errors.motivo_reemplazo}</div>}
+                    </div>
+
+                    <div className="drawer-actions">
+                        <button type="button" className="btn-secondary" onClick={() => setSelectedArchivoReplace(null)} disabled={replaceArchivoForm.processing}>
+                            Cancelar
+                        </button>
+                        <button type="submit" className="btn-primary" disabled={replaceArchivoForm.processing || !!replaceFileError || !replaceArchivoForm.data.archivo}>
+                            <UploadCloud className="h-4 w-4 mr-1" />
+                            {replaceArchivoForm.processing ? 'Reemplazando...' : 'Reemplazar archivo'}
                         </button>
                     </div>
                 </form>
@@ -1394,10 +1644,12 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                                 <div className="space-y-3">
                                     {proyecto.entregas.map((entrega) => (
                                         <EntregaItem
-                                            key={entrega.id}
-                                            entrega={entrega}
-                                            proyectoId={proyecto.id}
-                                        />
+                                                key={entrega.id}
+                                                entrega={entrega}
+                                                proyectoId={proyecto.id}
+                                                puedeReemplazarArchivo={puedeReemplazarArchivo}
+                                                onReplaceArchivo={abrirReemplazoArchivo}
+                                            />
                                     ))}
                                 </div>
                             )}
@@ -1447,11 +1699,21 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
 /* ─────────────────────────────────────────────────────────────
    Componente Entrega (expandible)
    ───────────────────────────────────────────────────────────── */
-function EntregaItem({ entrega, proyectoId }: { entrega: Entrega; proyectoId: number }) {
+function EntregaItem({
+    entrega,
+    proyectoId,
+    puedeReemplazarArchivo,
+    onReplaceArchivo,
+}: {
+    entrega: Entrega;
+    proyectoId: number;
+    puedeReemplazarArchivo: (archivo: Archivo) => boolean;
+    onReplaceArchivo: (archivo: Archivo) => void;
+}) {
     const [open, setOpen] = useState(false);
 
-    const archivosEstudiante = entrega.archivos.filter((a) => a.tipo_archivo === 'avance_estudiante');
-    const archivosRevision   = entrega.archivos.filter((a) => a.tipo_archivo === 'documento_revisado');
+    const archivosEstudiante = entrega.archivos.filter((a) => a.tipo_archivo === 'avance_estudiante' && (a.estado || 'activo') === 'activo');
+    const archivosRevision   = entrega.archivos.filter((a) => a.tipo_archivo === 'documento_revisado' && (a.estado || 'activo') === 'activo');
 
     const estadoColor = ESTADO_COLOR[entrega.estado] ?? '#6E6458';
 
@@ -1514,6 +1776,18 @@ function EntregaItem({ entrega, proyectoId }: { entrega: Entrega; proyectoId: nu
                                         <Download className="h-3.5 w-3.5" />
                                         Descargar
                                     </a>
+
+                                    {puedeReemplazarArchivo(archivo) && (
+                                        <button
+                                            type="button"
+                                            className="btn-ghost"
+                                            title="Reemplazar archivo"
+                                            onClick={() => onReplaceArchivo(archivo)}
+                                        >
+                                            <UploadCloud className="h-3.5 w-3.5" />
+                                            Reemplazar
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -1541,6 +1815,18 @@ function EntregaItem({ entrega, proyectoId }: { entrega: Entrega; proyectoId: nu
                                         <Download className="h-3.5 w-3.5" />
                                         Descargar
                                     </a>
+
+                                    {puedeReemplazarArchivo(archivo) && (
+                                        <button
+                                            type="button"
+                                            className="btn-ghost"
+                                            title="Reemplazar revisión"
+                                            onClick={() => onReplaceArchivo(archivo)}
+                                        >
+                                            <UploadCloud className="h-3.5 w-3.5" />
+                                            Reemplazar
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>

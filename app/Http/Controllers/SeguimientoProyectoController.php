@@ -63,7 +63,7 @@ class SeguimientoProyectoController extends Controller
         $proyectos = $query
             ->limit(100)
             ->get()
-            ->map(fn (Proyecto $proyecto) => $this->mapProyectoListado($proyecto));
+            ->map(fn (Proyecto $proyecto) => $this->mapProyectoListado($proyecto, (int) $usuario->id, $rol));
 
         return Inertia::render('seguimiento/index', [
             'seguimientoData' => [
@@ -74,6 +74,8 @@ class SeguimientoProyectoController extends Controller
                 ],
                 'summary' => [
                     'total' => $proyectos->count(),
+                    'mis_tutoriados' => $proyectos->where('relacion_usuario', 'tutor')->count(),
+                    'mis_revisiones' => $proyectos->where('relacion_usuario', 'revisor')->count(),
                     'sin_entregas' => $proyectos->where('entregas_count', 0)->count(),
                     'con_observaciones' => $proyectos->filter(fn ($p) => $p['observaciones_count'] > 0)->count(),
                     'con_revisiones' => $proyectos->filter(fn ($p) => $p['revisiones_count'] > 0)->count(),
@@ -123,6 +125,15 @@ class SeguimientoProyectoController extends Controller
                     'puede_subir_entrega' => $rol === 'estudiante' && (int) $proyecto->estudiante_id === (int) $usuario->id,
                     'puede_observar' => in_array($rol, ['docente', 'coordinador', 'admin'], true),
                     'puede_revisar' => in_array($rol, ['docente', 'coordinador', 'admin'], true),
+                    'puede_accion_tutor' => $rol === 'docente' && (int) $proyecto->tutor_id === (int) $usuario->id,
+                    'puede_devolver_revision' => in_array($rol, ['coordinador', 'admin'], true)
+                        || (
+                            $rol === 'docente'
+                            && DB::table('proyecto_revisores')
+                                ->where('proyecto_id', $proyecto->id)
+                                ->where('revisor_id', $usuario->id)
+                                ->exists()
+                        ),
                     'puede_administrar' => in_array($rol, ['coordinador', 'admin'], true),
                 ],
             ],
@@ -146,7 +157,7 @@ class SeguimientoProyectoController extends Controller
                 'required',
                 'file',
                 'max:204800',
-                'mimes:doc,docx,pdf',
+                'mimes:doc,docx,pdf,xls,xlsx',
             ],
         ]);
 
@@ -322,26 +333,257 @@ class SeguimientoProyectoController extends Controller
             ]);
     }
 
+    public function tutorSolicitarCorrecciones(Request $request, Proyecto $proyecto): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless($rol === 'docente' && (int) $proyecto->tutor_id === (int) $usuario->id, 403);
+
+        $proyecto->loadMissing([
+            'estudiante:id,name,email,rol',
+            'tutor:id,name,email,rol',
+            'revisores:id,name,email,rol',
+        ]);
+
+        $validated = $request->validate([
+            'entrega_id' => ['nullable', 'integer', 'exists:proyecto_entregas,id'],
+            'comentario' => ['required', 'string', 'max:5000'],
+        ]);
+
+        $entrega = null;
+
+        if (! empty($validated['entrega_id'])) {
+            $entrega = ProyectoEntrega::query()
+                ->where('id', $validated['entrega_id'])
+                ->where('proyecto_id', $proyecto->id)
+                ->firstOrFail();
+        } else {
+            $entrega = ProyectoEntrega::query()
+                ->where('proyecto_id', $proyecto->id)
+                ->orderByDesc('numero_version')
+                ->first();
+        }
+
+        $eventoKafka = DB::transaction(function () use ($proyecto, $usuario, $validated, $entrega): array {
+            DB::statement("SELECT set_config('app.user_id', ?, true)", [(string) $usuario->id]);
+
+            $estadoAnterior = (string) $proyecto->estado;
+
+            $proyecto->forceFill([
+                'estado' => 'observado',
+            ])->save();
+
+            if ($entrega) {
+                $entrega->forceFill([
+                    'estado' => 'requiere_correcciones',
+                ])->save();
+            }
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'correcciones_solicitadas',
+                'descripcion' => 'El tutor solicitó correcciones al estudiante.',
+                'metadata' => [
+                    'estado_anterior' => $estadoAnterior,
+                    'estado_nuevo' => 'observado',
+                    'entrega_id' => $entrega ? (int) $entrega->id : null,
+                    'numero_version' => $entrega ? (int) $entrega->numero_version : null,
+                    'comentario' => $validated['comentario'],
+                ],
+            ]);
+
+            return [
+                'event_id' => (string) Str::uuid(),
+                'event' => 'proyecto.correcciones_solicitadas',
+                'module' => 'Seguimiento',
+                'aggregate_type' => 'proyecto',
+                'aggregate_id' => (int) $proyecto->id,
+                'occurred_at' => now()->toISOString(),
+                'data' => [
+                    'proyecto' => [
+                        'id' => (int) $proyecto->id,
+                        'codigo' => $proyecto->codigo,
+                        'titulo' => $proyecto->titulo,
+                        'estado_anterior' => $estadoAnterior,
+                        'estado_nuevo' => 'observado',
+                    ],
+                    'entrega' => $entrega ? [
+                        'id' => (int) $entrega->id,
+                        'titulo' => $entrega->titulo,
+                        'numero_version' => (int) $entrega->numero_version,
+                        'estado' => 'requiere_correcciones',
+                    ] : null,
+                    'comentario' => $validated['comentario'],
+                    'tutor' => [
+                        'id' => (int) $usuario->id,
+                        'nombre' => $usuario->name,
+                        'email' => $usuario->email,
+                    ],
+                    'estudiante' => $proyecto->estudiante ? [
+                        'id' => (int) $proyecto->estudiante->id,
+                        'nombre' => $proyecto->estudiante->name,
+                        'email' => $proyecto->estudiante->email,
+                    ] : null,
+                ],
+            ];
+        });
+
+        $this->publicarEventoSeguimiento($eventoKafka, $proyecto);
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Correcciones solicitadas al estudiante.',
+            ]);
+    }
+
+    public function tutorDerivarRevision(Request $request, Proyecto $proyecto): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless($rol === 'docente' && (int) $proyecto->tutor_id === (int) $usuario->id, 403);
+
+        abort_if($proyecto->revisores()->count() === 0, 422, 'El proyecto no tiene revisores asignados.');
+
+        $validated = $request->validate([
+            'entrega_id' => ['nullable', 'integer', 'exists:proyecto_entregas,id'],
+            'comentario' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $proyecto->loadMissing([
+            'estudiante:id,name,email,rol',
+            'tutor:id,name,email,rol',
+            'revisores:id,name,email,rol',
+        ]);
+
+        $entrega = null;
+
+        if (! empty($validated['entrega_id'])) {
+            $entrega = ProyectoEntrega::query()
+                ->where('id', $validated['entrega_id'])
+                ->where('proyecto_id', $proyecto->id)
+                ->firstOrFail();
+        } else {
+            $entrega = ProyectoEntrega::query()
+                ->where('proyecto_id', $proyecto->id)
+                ->orderByDesc('numero_version')
+                ->first();
+        }
+
+        $eventoKafka = DB::transaction(function () use ($proyecto, $usuario, $validated, $entrega): array {
+            DB::statement("SELECT set_config('app.user_id', ?, true)", [(string) $usuario->id]);
+
+            $estadoAnterior = (string) $proyecto->estado;
+
+            $proyecto->forceFill([
+                'estado' => 'en_revision',
+            ])->save();
+
+            if ($entrega) {
+                $entrega->forceFill([
+                    'estado' => 'derivada_revision',
+                ])->save();
+            }
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'derivado_revision',
+                'descripcion' => 'El tutor derivó el proyecto a revisión por revisores.',
+                'metadata' => [
+                    'estado_anterior' => $estadoAnterior,
+                    'estado_nuevo' => 'en_revision',
+                    'entrega_id' => $entrega ? (int) $entrega->id : null,
+                    'numero_version' => $entrega ? (int) $entrega->numero_version : null,
+                    'comentario' => $validated['comentario'] ?? null,
+                    'revisores' => $proyecto->revisores->map(fn ($revisor) => [
+                        'id' => (int) $revisor->id,
+                        'nombre' => $revisor->name,
+                        'email' => $revisor->email,
+                    ])->values()->all(),
+                ],
+            ]);
+
+            return [
+                'event_id' => (string) Str::uuid(),
+                'event' => 'proyecto.derivado_revision',
+                'module' => 'Seguimiento',
+                'aggregate_type' => 'proyecto',
+                'aggregate_id' => (int) $proyecto->id,
+                'occurred_at' => now()->toISOString(),
+                'data' => [
+                    'proyecto' => [
+                        'id' => (int) $proyecto->id,
+                        'codigo' => $proyecto->codigo,
+                        'titulo' => $proyecto->titulo,
+                        'estado_anterior' => $estadoAnterior,
+                        'estado_nuevo' => 'en_revision',
+                    ],
+                    'entrega' => $entrega ? [
+                        'id' => (int) $entrega->id,
+                        'titulo' => $entrega->titulo,
+                        'numero_version' => (int) $entrega->numero_version,
+                        'estado' => 'derivada_revision',
+                    ] : null,
+                    'comentario' => $validated['comentario'] ?? null,
+                    'tutor' => [
+                        'id' => (int) $usuario->id,
+                        'nombre' => $usuario->name,
+                        'email' => $usuario->email,
+                    ],
+                    'estudiante' => $proyecto->estudiante ? [
+                        'id' => (int) $proyecto->estudiante->id,
+                        'nombre' => $proyecto->estudiante->name,
+                        'email' => $proyecto->estudiante->email,
+                    ] : null,
+                    'revisores' => $proyecto->revisores->map(fn ($revisor) => [
+                        'id' => (int) $revisor->id,
+                        'nombre' => $revisor->name,
+                        'email' => $revisor->email,
+                    ])->values()->all(),
+                ],
+            ];
+        });
+
+        $this->publicarEventoSeguimiento($eventoKafka, $proyecto);
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Proyecto derivado a revisión por revisores.',
+            ]);
+    }
+
     public function storeArchivoRevision(Request $request, Proyecto $proyecto): RedirectResponse
     {
         $usuario = $request->user();
         $rol = strtolower((string) $usuario->rol);
 
+        $esRevisorAsignado = DB::table('proyecto_revisores')
+            ->where('proyecto_id', $proyecto->id)
+            ->where('revisor_id', $usuario->id)
+            ->exists();
+
         abort_unless(
-            in_array($rol, ['docente', 'coordinador', 'admin'], true)
-                && $this->puedeVerProyecto($proyecto, (int) $usuario->id, $rol),
+            in_array($rol, ['coordinador', 'admin'], true)
+                || ($rol === 'docente' && $esRevisorAsignado),
             403
         );
 
         $validated = $request->validate([
             'entrega_id' => ['required', 'integer', 'exists:proyecto_entregas,id'],
-            'resultado' => ['required', 'string', 'in:observado,aprobado,rechazado,requiere_correcciones'],
+            'resultado' => ['required', 'string', 'in:aprobado,rechazado,requiere_correcciones'],
             'comentario' => ['nullable', 'string', 'max:5000'],
             'archivo' => [
                 'required',
                 'file',
                 'max:204800',
-                'mimes:doc,docx,pdf',
+                'mimes:doc,docx,pdf,xls,xlsx',
             ],
         ]);
 
@@ -352,13 +594,17 @@ class SeguimientoProyectoController extends Controller
 
         $archivo = $request->file('archivo');
 
-        DB::transaction(function () use ($validated, $archivo, $proyecto, $entrega, $usuario, $rol): void {
+        $proyecto->loadMissing([
+            'estudiante:id,name,email,rol',
+            'tutor:id,name,email,rol',
+            'revisores:id,name,email,rol',
+        ]);
+
+        $eventoKafka = DB::transaction(function () use ($validated, $archivo, $proyecto, $entrega, $usuario, $rol): array {
             $rolRevision = 'coordinador';
 
             if ($rol === 'docente') {
-                $rolRevision = (int) $proyecto->tutor_id === (int) $usuario->id
-                    ? 'tutor'
-                    : 'revisor';
+                $rolRevision = 'revisor';
             }
 
             $revision = ProyectoRevision::create([
@@ -377,11 +623,12 @@ class SeguimientoProyectoController extends Controller
 
             $ruta = $archivo->storeAs($directorio, $nombreServidor, 'local');
 
-            ProyectoArchivo::create([
+            $archivoRevision = ProyectoArchivo::create([
                 'entrega_id' => (int) $entrega->id,
                 'proyecto_id' => (int) $proyecto->id,
                 'subido_por_id' => (int) $usuario->id,
                 'tipo_archivo' => 'documento_revisado',
+                'estado' => 'activo',
                 'nombre_original' => $nombreOriginal,
                 'nombre_servidor' => $nombreServidor,
                 'ruta_almacenamiento' => $ruta,
@@ -402,13 +649,173 @@ class SeguimientoProyectoController extends Controller
                     'archivo_original' => $nombreOriginal,
                 ],
             ]);
+
+            return [
+                'event_id' => (string) Str::uuid(),
+                'event' => 'proyecto.revision_devuelta',
+                'module' => 'Seguimiento',
+                'aggregate_type' => 'proyecto',
+                'aggregate_id' => (int) $proyecto->id,
+                'occurred_at' => now()->toISOString(),
+                'data' => [
+                    'proyecto' => [
+                        'id' => (int) $proyecto->id,
+                        'codigo' => $proyecto->codigo,
+                        'titulo' => $proyecto->titulo,
+                        'estado' => (string) $proyecto->estado,
+                    ],
+                    'entrega' => [
+                        'id' => (int) $entrega->id,
+                        'titulo' => $entrega->titulo,
+                        'numero_version' => (int) $entrega->numero_version,
+                        'estado' => $entrega->estado,
+                    ],
+                    'revision' => [
+                        'id' => (int) $revision->id,
+                        'rol_revision' => $rolRevision,
+                        'resultado' => $validated['resultado'],
+                        'comentario' => $validated['comentario'] ?? null,
+                    ],
+                    'archivo' => [
+                        'id' => (int) $archivoRevision->id,
+                        'nombre_original' => $nombreOriginal,
+                        'mime_type' => $archivo->getClientMimeType(),
+                        'tamano_bytes' => $archivo->getSize(),
+                    ],
+                    'revisor' => [
+                        'id' => (int) $usuario->id,
+                        'nombre' => $usuario->name,
+                        'email' => $usuario->email,
+                    ],
+                    'estudiante' => $proyecto->estudiante ? [
+                        'id' => (int) $proyecto->estudiante->id,
+                        'nombre' => $proyecto->estudiante->name,
+                        'email' => $proyecto->estudiante->email,
+                    ] : null,
+                    'tutor' => $proyecto->tutor ? [
+                        'id' => (int) $proyecto->tutor->id,
+                        'nombre' => $proyecto->tutor->name,
+                        'email' => $proyecto->tutor->email,
+                    ] : null,
+                    'revisores' => $proyecto->revisores->map(fn ($revisor) => [
+                        'id' => (int) $revisor->id,
+                        'nombre' => $revisor->name,
+                        'email' => $revisor->email,
+                    ])->values()->all(),
+                ],
+            ];
         });
+
+        $this->publicarEventoSeguimiento($eventoKafka, $proyecto);
 
         return redirect()
             ->route('seguimiento.show', $proyecto)
             ->with('toast', [
                 'type' => 'success',
                 'message' => 'Archivo revisado devuelto correctamente.',
+            ]);
+    }
+
+    public function replaceArchivo(Request $request, Proyecto $proyecto, ProyectoArchivo $archivo): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless($this->puedeVerProyecto($proyecto, (int) $usuario->id, $rol), 403);
+        abort_unless((int) $archivo->proyecto_id === (int) $proyecto->id, 404);
+        abort_unless((string) $archivo->estado === 'activo', 422);
+
+        $esArchivoDelUsuario = (int) $archivo->subido_por_id === (int) $usuario->id;
+
+        $puedeReemplazarComoEstudiante = $rol === 'estudiante'
+            && (int) $proyecto->estudiante_id === (int) $usuario->id
+            && $archivo->tipo_archivo === 'avance_estudiante'
+            && $esArchivoDelUsuario;
+
+        $esRevisorAsignado = DB::table('proyecto_revisores')
+            ->where('proyecto_id', $proyecto->id)
+            ->where('revisor_id', $usuario->id)
+            ->exists();
+
+        $puedeReemplazarComoRevisor = $rol === 'docente'
+            && $esRevisorAsignado
+            && $archivo->tipo_archivo === 'documento_revisado'
+            && $esArchivoDelUsuario;
+
+        $puedeReemplazarComoCoordinador = in_array($rol, ['coordinador', 'admin'], true);
+
+        abort_unless(
+            $puedeReemplazarComoEstudiante
+                || $puedeReemplazarComoRevisor
+                || $puedeReemplazarComoCoordinador,
+            403
+        );
+
+        $validated = $request->validate([
+            'archivo' => [
+                'required',
+                'file',
+                'max:204800',
+                'mimes:doc,docx,pdf,xls,xlsx',
+            ],
+            'motivo_reemplazo' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $nuevoArchivo = $request->file('archivo');
+
+        DB::transaction(function () use ($validated, $nuevoArchivo, $proyecto, $archivo, $usuario): void {
+            $nombreOriginal = $nuevoArchivo->getClientOriginalName();
+            $extension = $nuevoArchivo->getClientOriginalExtension();
+
+            $prefijo = $archivo->tipo_archivo === 'documento_revisado'
+                ? 'revision_reemplazo_'
+                : 'entrega_reemplazo_';
+
+            $nombreServidor = $prefijo . $archivo->id . '_' . Str::uuid() . '.' . $extension;
+
+            $directorio = 'proyectos/' . $proyecto->id . '/entregas/' . $archivo->entrega_id . '/reemplazos';
+
+            $ruta = $nuevoArchivo->storeAs($directorio, $nombreServidor, 'local');
+
+            $nuevoRegistro = ProyectoArchivo::create([
+                'entrega_id' => (int) $archivo->entrega_id,
+                'proyecto_id' => (int) $proyecto->id,
+                'subido_por_id' => (int) $usuario->id,
+                'tipo_archivo' => $archivo->tipo_archivo,
+                'estado' => 'activo',
+                'nombre_original' => $nombreOriginal,
+                'nombre_servidor' => $nombreServidor,
+                'ruta_almacenamiento' => $ruta,
+                'mime_type' => $nuevoArchivo->getClientMimeType(),
+                'tamano_bytes' => $nuevoArchivo->getSize(),
+            ]);
+
+            $archivo->forceFill([
+                'estado' => 'reemplazado',
+                'reemplazado_por_archivo_id' => (int) $nuevoRegistro->id,
+                'reemplazado_at' => now(),
+                'motivo_reemplazo' => $validated['motivo_reemplazo'],
+            ])->save();
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'archivo_reemplazado',
+                'descripcion' => 'Se reemplazó el archivo "' . $archivo->nombre_original . '" por "' . $nombreOriginal . '".',
+                'metadata' => [
+                    'archivo_anterior_id' => (int) $archivo->id,
+                    'archivo_nuevo_id' => (int) $nuevoRegistro->id,
+                    'tipo_archivo' => $archivo->tipo_archivo,
+                    'motivo' => $validated['motivo_reemplazo'],
+                ],
+            ]);
+        });
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Archivo reemplazado correctamente.',
             ]);
     }
 
@@ -427,6 +834,23 @@ class SeguimientoProyectoController extends Controller
             $archivo->ruta_almacenamiento,
             $archivo->nombre_original
         );
+    }
+
+    private function publicarEventoSeguimiento(array $eventoKafka, Proyecto $proyecto): void
+    {
+        try {
+            app(KafkaProducerService::class)->publish(
+                'proyectos.entregas',
+                $eventoKafka,
+                'proyecto-' . $proyecto->id
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('No se pudo publicar evento de seguimiento en Kafka.', [
+                'proyecto_id' => $proyecto->id,
+                'event' => $eventoKafka['event'] ?? null,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function proyectosVisiblesQuery(int $usuarioId, string $rol): Builder
@@ -477,7 +901,32 @@ class SeguimientoProyectoController extends Controller
         return false;
     }
 
-    private function mapProyectoListado(Proyecto $proyecto): array
+    private function relacionSeguimiento(Proyecto $proyecto, int $usuarioId, string $rol): string
+    {
+        if ($rol === 'estudiante' && (int) $proyecto->estudiante_id === $usuarioId) {
+            return 'estudiante';
+        }
+
+        if ((int) $proyecto->tutor_id === $usuarioId) {
+            return 'tutor';
+        }
+
+        if ($proyecto->revisores->contains(fn ($revisor) => (int) $revisor->id === $usuarioId)) {
+            return 'revisor';
+        }
+
+        if ($rol === 'coordinador') {
+            return 'coordinador';
+        }
+
+        if ($rol === 'admin') {
+            return 'admin';
+        }
+
+        return 'general';
+    }
+
+    private function mapProyectoListado(Proyecto $proyecto, int $usuarioId, string $rol): array
     {
         return [
             'id' => (int) $proyecto->id,
@@ -488,6 +937,7 @@ class SeguimientoProyectoController extends Controller
             'modalidad' => (string) $proyecto->modalidad,
             'area_tematica' => $proyecto->area_tematica,
             'updated_at' => $proyecto->updated_at,
+            'relacion_usuario' => $this->relacionSeguimiento($proyecto, $usuarioId, $rol),
             'documento_trabajo' => [
                 'titulo' => $proyecto->documento_trabajo_titulo,
                 'url' => $proyecto->documento_trabajo_url,
@@ -638,6 +1088,10 @@ class SeguimientoProyectoController extends Controller
         return [
             'id' => (int) $archivo->id,
             'tipo_archivo' => $archivo->tipo_archivo,
+            'estado' => $archivo->estado ?? 'activo',
+            'reemplazado_por_archivo_id' => $archivo->reemplazado_por_archivo_id,
+            'reemplazado_at' => $archivo->reemplazado_at,
+            'motivo_reemplazo' => $archivo->motivo_reemplazo,
             'nombre_original' => $archivo->nombre_original,
             'ruta_almacenamiento' => $archivo->ruta_almacenamiento,
             'mime_type' => $archivo->mime_type,
