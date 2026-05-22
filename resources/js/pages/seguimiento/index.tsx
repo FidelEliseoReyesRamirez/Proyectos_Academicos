@@ -1,25 +1,15 @@
 import { Head, Link, router } from '@inertiajs/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Activity,
-    AlertTriangle,
-    ArrowDown,
-    ArrowUp,
-    BookOpenCheck,
-    CalendarClock,
-    Eye,
-    FileText,
-    FolderKanban,
-    ListFilter,
-    MessageSquareText,
-    UserRound,
+    AlertTriangle, ArrowDown, ArrowUp, BookOpenCheck, CheckCircle2, ChevronRight,
+    FileCheck2, FileText, FolderKanban, MessageSquareText, Search, UserRound,
+    X, RotateCcw, Filter, Clock,
 } from 'lucide-react';
 
-type Usuario = {
-    id: number;
-    name: string;
-    email: string;
-    rol: string;
-} | null;
+/* ─────────────────────────────────────────────────────────────
+   Tipos
+   ───────────────────────────────────────────────────────────── */
+type Usuario = { id: number; name: string; email: string; rol: string; } | null;
 
 type Proyecto = {
     id: number;
@@ -55,165 +45,127 @@ type SeguimientoData = {
     proyectos: Proyecto[];
 };
 
-type Props = {
-    seguimientoData: SeguimientoData;
-};
+type Props = { seguimientoData: SeguimientoData; };
 
+/* ─────────────────────────────────────────────────────────────
+   Catálogos
+   ───────────────────────────────────────────────────────────── */
 const estadoLabels: Record<string, string> = {
-    en_revision: 'En revisión',
-    aprobado: 'Aprobado',
-    rechazado: 'Rechazado',
-    en_desarrollo: 'En desarrollo',
-    observado: 'Observado',
-    concluido: 'Concluido',
+    en_revision:         'En revisión',
+    aprobado:            'Aprobado',
+    rechazado:           'Rechazado',
+    en_desarrollo:       'En desarrollo',
+    observado:           'Observado',
+    concluido:           'Concluido',
     listo_para_revision: 'Listo para revisión',
-    en_revision_final: 'En revisión final',
+    en_revision_final:   'En revisión final',
 };
 
-const estadoTone: Record<string, string> = {
-    en_revision: 'state-review',
-    aprobado: 'state-approved',
-    rechazado: 'state-rejected',
-    en_desarrollo: 'state-development',
-    observado: 'state-observed',
-    concluido: 'state-finished',
-    listo_para_revision: 'state-ready',
-    en_revision_final: 'state-final',
+const ESTADO_COLOR: Record<string, string> = {
+    en_revision:         '#C9A84C',
+    aprobado:            '#3F9D58',
+    rechazado:           '#B91C1C',
+    en_desarrollo:       '#3B82F6',
+    observado:           '#EA8A1F',
+    concluido:           '#6E6458',
+    listo_para_revision: '#0EA5E9',
+    en_revision_final:   '#8B5CF6',
 };
 
+/* ─────────────────────────────────────────────────────────────
+   Helpers
+   ───────────────────────────────────────────────────────────── */
 function estadoLabel(estado: string): string {
     return estadoLabels[estado] || estado.replaceAll('_', ' ');
 }
 
 function formatDate(value?: string | null): string {
     if (!value) return 'Sin registro';
-
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Sin registro';
-
     return new Intl.DateTimeFormat('es-BO', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
     }).format(date);
 }
 
-function EstadoChip({ estado }: { estado: string }) {
-    return (
-        <span className={`estado-chip ${estadoTone[estado] || 'state-default'}`}>
-            <span />
-            {estadoLabel(estado)}
-        </span>
-    );
+function formatRelative(value?: string | null): string {
+    if (!value) return 'Sin movimiento';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin movimiento';
+    const diff = (Date.now() - date.getTime()) / 1000;
+    if (diff < 60)        return 'hace un momento';
+    if (diff < 3600)      return `hace ${Math.floor(diff / 60)} min`;
+    if (diff < 86400)     return `hace ${Math.floor(diff / 3600)} h`;
+    if (diff < 86400 * 7) return `hace ${Math.floor(diff / 86400)} días`;
+    return formatDate(value);
 }
 
-function KpiCard({
-    icon,
-    label,
-    value,
-    note,
-    tone = 'normal',
-}: {
-    icon: React.ReactNode;
-    label: string;
-    value: React.ReactNode;
-    note: string;
-    tone?: 'normal' | 'warning' | 'success';
-}) {
-    return (
-        <article className={`kpi-card tone-${tone}`}>
-            <div className="kpi-head">
-                {icon}
-                <span>{label}</span>
-            </div>
-            <strong>{value}</strong>
-            <p>{note}</p>
-        </article>
-    );
-}
-
-function SortButton({
-    active,
-    label,
-    direction,
-    onClick,
-}: {
-    active: boolean;
-    label: string;
-    direction: 'asc' | 'desc';
-    onClick: () => void;
-}) {
-    return (
-        <button type="button" className={`sort-button ${active ? 'is-active' : ''}`} onClick={onClick}>
-            <ListFilter className="h-4 w-4" />
-            {label}
-            {active && (direction === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />)}
-        </button>
-    );
-}
-
+/* ─────────────────────────────────────────────────────────────
+   Componente principal
+   ───────────────────────────────────────────────────────────── */
 export default function SeguimientoIndex({ seguimientoData }: Props) {
     const { rol, filters, summary, proyectos } = seguimientoData;
 
+    /* Heurística 1 — loading bar */
+    const [loading, setLoading] = useState(false);
+    useEffect(() => {
+        const offStart  = router.on('start',  () => setLoading(true));
+        const offFinish = router.on('finish', () => setLoading(false));
+        return () => { offStart(); offFinish(); };
+    }, []);
+
+    /* Heurística 7 — búsqueda local en cliente (debounce no necesario, es instantánea) */
+    const [search, setSearch] = useState('');
+
+    const filteredProyectos = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return proyectos;
+        return proyectos.filter((p) =>
+            p.titulo.toLowerCase().includes(q) ||
+            p.codigo.toLowerCase().includes(q) ||
+            (p.estudiante?.name || '').toLowerCase().includes(q) ||
+            (p.tutor?.name || '').toLowerCase().includes(q),
+        );
+    }, [proyectos, search]);
+
     const cambiarOrden = (sortBy: 'estado' | 'titulo' | 'ultimo_movimiento') => {
         const nextDirection = filters.sort_by === sortBy && filters.sort_dir === 'desc' ? 'asc' : 'desc';
-
-        router.get(
-            '/seguimiento',
-            {
-                sort_by: sortBy,
-                sort_dir: nextDirection,
-            },
-            {
-                preserveScroll: true,
-                preserveState: true,
-                replace: true,
-            },
-        );
+        router.get('/seguimiento', { sort_by: sortBy, sort_dir: nextDirection }, {
+            preserveScroll: true,
+            preserveState:  true,
+            replace:        true,
+        });
     };
+
+    /* Heurística 1 — título contextual al rol */
+    const heroTitle = rol === 'estudiante'
+        ? 'Tu proyecto de grado'
+        : 'Proyectos en seguimiento';
+
+    const heroDescription = rol === 'estudiante'
+        ? 'Aquí puedes ver el avance de tu proyecto, subir nuevas entregas y consultar las revisiones recibidas.'
+        : 'Selecciona un proyecto para revisar entregas, devolver archivos corregidos y consultar la línea de tiempo.';
 
     return (
         <>
             <Head title="Seguimiento del Proyecto" />
 
             <style>{`
+                /* ════════════════ PAGE ════════════════ */
                 .seguimiento-page {
-                    --surface: rgba(255,255,255,0.86);
-                    --surface-strong: #fff;
-                    --surface-soft: rgba(255,255,255,0.62);
-                    --text: #24151A;
-                    --muted: #6E6458;
-                    --muted-2: #8A8074;
-                    --border: rgba(107,18,48,0.14);
-                    --border-strong: rgba(107,18,48,0.28);
-                    --guindo: #6B1230;
-                    --gold: #9A6C18;
-                    --shadow: 0 16px 38px rgba(107,18,48,0.08);
-
+                    position: relative;
+                    width: 100%;
                     min-height: 100vh;
-                    color: var(--text);
+                    color: #24151A;
                     background:
-                        radial-gradient(circle at 92% 8%, rgba(201,168,76,0.20), transparent 30%),
-                        radial-gradient(circle at 0% 92%, rgba(107,18,48,0.13), transparent 36%),
+                        radial-gradient(circle at 92% 8%, rgba(201,168,76,0.22), transparent 30%),
+                        radial-gradient(circle at 0% 92%, rgba(107,18,48,0.14), transparent 36%),
                         linear-gradient(135deg, #FAF8F5 0%, #F5F0EA 42%, #F6EEDC 100%);
                 }
-
                 @media (prefers-color-scheme: dark) {
                     .seguimiento-page {
-                        --surface: rgba(53,27,40,0.92);
-                        --surface-strong: #351B28;
-                        --surface-soft: rgba(255,255,255,0.055);
-                        --text: #F4EEE9;
-                        --muted: #D7C9C0;
-                        --muted-2: #A9978D;
-                        --border: rgba(214,185,106,0.18);
-                        --border-strong: rgba(214,185,106,0.32);
-                        --guindo: #D4849A;
-                        --gold: #D6B96A;
-                        --shadow: 0 18px 45px rgba(18,7,12,0.34);
-
+                        color: #F4EEE9;
                         background:
                             radial-gradient(circle at 95% 6%, rgba(214,185,106,0.16), transparent 28%),
                             radial-gradient(circle at 2% 98%, rgba(184,80,112,0.16), transparent 34%),
@@ -221,383 +173,678 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
                     }
                 }
 
-                .seguimiento-shell {
+                .progress-bar {
+                    position: fixed; top: 0; left: 0; right: 0;
+                    height: 3px; z-index: 999;
+                    background: linear-gradient(90deg, transparent, #6B1230, #C9A84C, transparent);
+                    background-size: 200% 100%;
+                    animation: progress-slide 1.1s linear infinite;
+                }
+                @keyframes progress-slide {
+                    0%   { background-position: 200% 0; }
+                    100% { background-position: -200% 0; }
+                }
+
+                .shell {
+                    width: 100%;
+                    max-width: 1400px;
+                    margin: 0 auto;
+                    padding: 1rem;
                     display: grid;
                     gap: 1.25rem;
-                    padding: 1rem;
                 }
+                @media (min-width: 768px)  { .shell { padding: 1.5rem; gap: 1.5rem; } }
+                @media (min-width: 1280px) { .shell { padding: 2rem 2.25rem; } }
 
-                @media (min-width: 768px) {
-                    .seguimiento-shell {
-                        padding: 1.5rem;
-                        gap: 1.5rem;
-                    }
-                }
-
-                .hero-card,
-                .kpi-card,
-                .project-card,
-                .empty-card {
-                    border: 1px solid var(--border);
-                    background: var(--surface);
-                    box-shadow: var(--shadow);
+                .glass-card {
+                    border-radius: 1.5rem;
+                    border: 1px solid rgba(107,18,48,0.12);
+                    background: rgba(255,255,255,0.70);
+                    box-shadow: 0 14px 34px rgba(107,18,48,0.08);
                     backdrop-filter: blur(10px);
                 }
-
-                .hero-card {
-                    border-radius: 1.5rem;
-                    padding: 1.35rem;
+                @media (prefers-color-scheme: dark) {
+                    .glass-card {
+                        border-color: rgba(214,185,106,0.14);
+                        background: rgba(255,255,255,0.045);
+                        box-shadow: 0 14px 34px rgba(18,7,12,0.22);
+                    }
                 }
 
                 .eyebrow {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.45rem;
-                    color: var(--gold);
-                    font-size: 0.68rem;
-                    font-weight: 900;
-                    letter-spacing: 0.13em;
-                    text-transform: uppercase;
+                    display: inline-flex; align-items: center; gap: 0.45rem;
+                    color: #9A6C18;
+                    font-size: 0.68rem; font-weight: 900;
+                    letter-spacing: 0.13em; text-transform: uppercase;
                 }
+                @media (prefers-color-scheme: dark) { .eyebrow { color: #D6B96A; } }
 
-                .hero-title {
-                    margin-top: 0.65rem;
-                    color: var(--text);
-                    font-size: clamp(1.8rem, 3vw, 2.6rem);
-                    font-weight: 950;
-                    line-height: 1.08;
-                    letter-spacing: -0.04em;
-                }
-
-                .hero-text {
-                    margin-top: 0.75rem;
-                    max-width: 56rem;
-                    color: var(--muted);
-                    font-size: 0.95rem;
-                    line-height: 1.7;
-                }
-
+                /* ════════════════ KPI CARDS ════════════════ */
                 .kpi-grid {
                     display: grid;
-                    gap: 0.9rem;
+                    gap: 0.75rem;
+                    grid-template-columns: 1fr;
                 }
-
-                @media (min-width: 760px) {
-                    .kpi-grid {
-                        grid-template-columns: repeat(4, minmax(0, 1fr));
-                    }
-                }
+                @media (min-width: 640px)  { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+                @media (min-width: 1024px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
 
                 .kpi-card {
+                    display: flex; align-items: center; gap: 1rem;
+                    padding: 1.15rem 1.2rem;
                     border-radius: 1.15rem;
-                    padding: 1rem;
+                    border: 1px solid rgba(107,18,48,0.10);
+                    background: rgba(255,255,255,0.55);
+                    transition: transform .18s, border-color .18s, box-shadow .18s;
+                }
+                .kpi-card:hover {
+                    transform: translateY(-1px);
+                    border-color: rgba(107,18,48,0.22);
+                    box-shadow: 0 12px 28px rgba(107,18,48,0.08);
+                }
+                @media (prefers-color-scheme: dark) {
+                    .kpi-card { background: rgba(255,255,255,0.035); border-color: rgba(214,185,106,0.14); }
+                    .kpi-card:hover { border-color: rgba(214,185,106,0.32); }
                 }
 
-                .kpi-head {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.45rem;
-                    color: var(--muted-2);
-                    font-size: 0.68rem;
+                .kpi-icon {
+                    flex-shrink: 0;
+                    width: 2.65rem; height: 2.65rem;
+                    display: flex; align-items: center; justify-content: center;
+                    border-radius: 0.85rem;
+                    background: rgba(107,18,48,0.10);
+                    color: #6B1230;
+                }
+                .kpi-card.tone-warning .kpi-icon { background: rgba(234,138,31,0.14); color: #B86612; }
+                .kpi-card.tone-success .kpi-icon { background: rgba(21,128,61,0.12); color: #15803D; }
+                .kpi-card.tone-info .kpi-icon    { background: rgba(154,108,24,0.14); color: #9A6C18; }
+                @media (prefers-color-scheme: dark) {
+                    .kpi-icon                        { background: rgba(214,185,106,0.14); color: #D6B96A; }
+                    .kpi-card.tone-warning .kpi-icon { background: rgba(244,180,94,0.14); color: #F4B45E; }
+                    .kpi-card.tone-success .kpi-icon { background: rgba(111,194,130,0.14); color: #6FC282; }
+                    .kpi-card.tone-info .kpi-icon    { background: rgba(214,185,106,0.16); color: #D6B96A; }
+                }
+
+                .kpi-body {
+                    flex: 1; min-width: 0;
+                }
+                .kpi-body span {
+                    color: #8A8074;
+                    font-size: 0.66rem;
                     font-weight: 900;
                     letter-spacing: 0.1em;
                     text-transform: uppercase;
                 }
-
-                .kpi-card strong {
+                .kpi-body strong {
                     display: block;
-                    margin-top: 0.45rem;
-                    color: var(--text);
-                    font-size: 1.65rem;
-                    font-weight: 950;
+                    color: #24151A;
+                    font-size: 1.75rem;
+                    font-weight: 900;
+                    line-height: 1.1;
+                    margin-top: 0.15rem;
+                }
+                .kpi-body p {
+                    margin: 0.2rem 0 0;
+                    color: #6E6458;
+                    font-size: 0.74rem;
+                    line-height: 1.4;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .kpi-body span   { color: #A9978D; }
+                    .kpi-body strong { color: #F4EEE9; }
+                    .kpi-body p      { color: #D7C9C0; }
                 }
 
-                .kpi-card p {
-                    margin-top: 0.35rem;
-                    color: var(--muted);
-                    font-size: 0.78rem;
-                    line-height: 1.45;
+                /* ════════════════ FILTERS BAR ════════════════ */
+                .filters-bar {
+                    display: flex; flex-direction: column;
+                    gap: 1rem;
+                    padding: 1.25rem 1.5rem;
+                }
+                @media (min-width: 900px) {
+                    .filters-bar { flex-direction: row; align-items: center; justify-content: space-between; }
                 }
 
-                .section-head {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.75rem;
+                .search-wrap {
+                    position: relative;
+                    flex: 1;
+                    max-width: 32rem;
+                    width: 100%;
+                }
+                .search-wrap svg.search-icon {
+                    position: absolute;
+                    left: 0.85rem; top: 50%;
+                    transform: translateY(-50%);
+                    height: 1rem; width: 1rem;
+                    opacity: 0.4;
+                    pointer-events: none;
+                    z-index: 2;
+                }
+                .search-wrap .clear-btn {
+                    position: absolute;
+                    right: 0.5rem; top: 50%;
+                    transform: translateY(-50%);
+                    width: 1.6rem; height: 1.6rem;
+                    border-radius: 999px;
+                    border: 0;
+                    background: rgba(107,18,48,0.10);
+                    color: #6B1230;
+                    cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    transition: background .15s;
+                }
+                .search-wrap .clear-btn:hover { background: rgba(107,18,48,0.22); }
+                @media (prefers-color-scheme: dark) {
+                    .search-wrap .clear-btn { background: rgba(214,185,106,0.14); color: #D6B96A; }
+                    .search-wrap .clear-btn:hover { background: rgba(214,185,106,0.28); }
                 }
 
-                @media (min-width: 820px) {
-                    .section-head {
-                        flex-direction: row;
-                        align-items: center;
-                        justify-content: space-between;
-                    }
+                .search-input {
+                    width: 100%;
+                    height: 2.65rem;
+                    border-radius: 0.9rem;
+                    border: 1px solid rgba(107,18,48,0.12);
+                    background-color: rgba(255,255,255,0.75);
+                    padding: 0 2.75rem 0 2.5rem;
+                    font-size: 0.9rem;
+                    color: #24151A;
+                    outline: none;
+                    transition: border-color .18s, box-shadow .18s;
+                }
+                .search-input:focus-visible {
+                    border-color: #6B1230;
+                    box-shadow: 0 0 0 3px rgba(107,18,48,0.10);
+                }
+                @media (prefers-color-scheme: dark) {
+                    .search-input { border-color: rgba(214,185,106,0.14); background-color: #2B1620; color: #F4EEE9; }
                 }
 
-                .section-title {
-                    margin: 0;
-                    color: var(--text);
-                    font-size: 1.2rem;
-                    font-weight: 950;
-                }
-
-                .section-description {
-                    margin-top: 0.25rem;
-                    color: var(--muted);
-                    font-size: 0.86rem;
-                    line-height: 1.55;
-                }
-
-                .sort-actions {
-                    display: flex;
+                .sort-group {
+                    display: flex; align-items: center; gap: 0.55rem;
                     flex-wrap: wrap;
-                    gap: 0.55rem;
                 }
+                .sort-label {
+                    display: inline-flex; align-items: center; gap: 0.35rem;
+                    font-size: 0.72rem;
+                    font-weight: 900;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    color: #6E6458;
+                }
+                @media (prefers-color-scheme: dark) { .sort-label { color: #A9978D; } }
 
                 .sort-button {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.35rem;
-                    border: 1px solid var(--border);
-                    border-radius: 0.8rem;
-                    background: var(--surface);
-                    color: var(--muted);
-                    padding: 0.55rem 0.75rem;
-                    font-size: 0.78rem;
-                    font-weight: 900;
+                    display: inline-flex; align-items: center; gap: 0.35rem;
+                    height: 2.2rem;
+                    padding: 0 0.8rem;
+                    border: 1px solid rgba(107,18,48,0.14);
+                    border-radius: 0.7rem;
+                    background: transparent;
+                    color: #6E6458;
+                    font-size: 0.78rem; font-weight: 800;
                     cursor: pointer;
+                    transition: all .15s;
                 }
-
-                .sort-button:hover,
+                .sort-button:hover { background: rgba(107,18,48,0.06); color: #6B1230; }
                 .sort-button.is-active {
-                    border-color: var(--border-strong);
-                    background: color-mix(in srgb, var(--guindo) 10%, var(--surface));
-                    color: var(--guindo);
+                    background: #6B1230;
+                    border-color: #6B1230;
+                    color: white;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .sort-button { color: #A89889; border-color: rgba(214,185,106,0.22); }
+                    .sort-button:hover { background: rgba(214,185,106,0.08); color: #D6B96A; }
+                    .sort-button.is-active { background: #D4849A; border-color: #D4849A; color: #2B1620; }
                 }
 
-                .project-list {
-                    display: grid;
-                    gap: 0.75rem;
-                }
+                /* ════════════════ PROJECT CARD ════════════════ */
+                .project-list { display: grid; gap: 0.75rem; }
 
                 .project-card {
                     display: grid;
-                    gap: 0.8rem;
-                    border-radius: 1rem;
-                    padding: 1rem;
-                    color: inherit;
+                    grid-template-columns: 1fr;
+                    gap: 1rem;
+                    padding: 1.15rem 1.25rem;
+                    border-radius: 1.1rem;
+                    border: 1px solid rgba(107,18,48,0.10);
+                    background: rgba(255,255,255,0.65);
                     text-decoration: none;
-                    transition: 0.15s ease;
+                    color: inherit;
+                    transition: all .18s;
                 }
-
                 .project-card:hover {
-                    border-color: var(--border-strong);
-                    background: var(--surface-strong);
+                    border-color: rgba(107,18,48,0.25);
+                    background: rgba(255,255,255,0.85);
                     transform: translateY(-1px);
+                    box-shadow: 0 16px 34px rgba(107,18,48,0.10);
                 }
-
-                @media (min-width: 960px) {
+                @media (prefers-color-scheme: dark) {
+                    .project-card { background: rgba(255,255,255,0.035); border-color: rgba(214,185,106,0.14); }
+                    .project-card:hover { background: rgba(255,255,255,0.08); border-color: rgba(214,185,106,0.32); }
+                }
+                @media (min-width: 1024px) {
                     .project-card {
-                        grid-template-columns: minmax(0, 1.4fr) auto minmax(150px, 0.4fr) auto;
+                        grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 0.9fr) auto;
                         align-items: center;
                     }
                 }
 
+                .project-main { min-width: 0; }
                 .project-code {
-                    display: block;
-                    color: var(--gold);
-                    font-size: 0.68rem;
-                    font-weight: 950;
-                    letter-spacing: 0.08em;
+                    display: inline-block;
+                    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                    font-size: 0.7rem;
+                    font-weight: 900;
+                    letter-spacing: 0.04em;
+                    color: #9A6C18;
+                    background: rgba(154,108,24,0.10);
+                    padding: 0.15rem 0.5rem;
+                    border-radius: 0.45rem;
+                    margin-bottom: 0.4rem;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .project-code { color: #D6B96A; background: rgba(214,185,106,0.12); }
+                }
+                .project-title {
+                    font-size: 1rem;
+                    font-weight: 900;
+                    color: #24151A;
+                    line-height: 1.35;
+                    margin-bottom: 0.4rem;
+                }
+                @media (prefers-color-scheme: dark) { .project-title { color: #F4EEE9; } }
+
+                .project-people {
+                    display: flex; flex-wrap: wrap; gap: 0.85rem;
+                    font-size: 0.76rem;
+                    color: #6E6458;
+                }
+                .project-people span {
+                    display: inline-flex; align-items: center; gap: 0.3rem;
+                }
+                .project-people strong { color: #24151A; font-weight: 700; }
+                @media (prefers-color-scheme: dark) {
+                    .project-people { color: #A8A094; }
+                    .project-people strong { color: #F4EEE9; }
+                }
+
+                .project-counters {
+                    display: flex; flex-wrap: wrap; gap: 0.35rem;
+                    margin-top: 0.6rem;
+                }
+                .counter-pill {
+                    display: inline-flex; align-items: center; gap: 0.3rem;
+                    padding: 0.2rem 0.55rem;
+                    border-radius: 999px;
+                    font-size: 0.7rem;
+                    font-weight: 800;
+                    color: #6E6458;
+                    background: rgba(110,100,88,0.10);
+                }
+                .counter-pill.has-data { color: #6B1230; background: rgba(107,18,48,0.10); }
+                @media (prefers-color-scheme: dark) {
+                    .counter-pill { color: #A8A094; background: rgba(255,255,255,0.06); }
+                    .counter-pill.has-data { color: #D4849A; background: rgba(212,132,154,0.12); }
+                }
+
+                .project-time {
+                    min-width: 0;
+                }
+                .project-time-label {
+                    font-size: 0.64rem;
+                    font-weight: 900;
+                    letter-spacing: 0.1em;
                     text-transform: uppercase;
+                    color: #8A8074;
                     margin-bottom: 0.2rem;
                 }
-
-                .project-main strong {
-                    display: block;
-                    color: var(--text);
-                    font-size: 0.95rem;
-                    font-weight: 950;
-                    line-height: 1.3;
+                .project-time-value {
+                    display: flex; align-items: center; gap: 0.35rem;
+                    color: #24151A;
+                    font-size: 0.85rem;
+                    font-weight: 800;
                 }
-
-                .project-main p,
-                .project-info span {
-                    margin-top: 0.2rem;
-                    color: var(--muted);
-                    font-size: 0.78rem;
-                    line-height: 1.45;
-                }
-
-                .project-info strong {
-                    display: block;
-                    color: var(--text);
-                    font-size: 0.82rem;
-                    font-weight: 900;
+                @media (prefers-color-scheme: dark) {
+                    .project-time-label { color: #A9978D; }
+                    .project-time-value { color: #F4EEE9; }
                 }
 
                 .project-action {
-                    display: inline-flex;
-                    justify-content: center;
-                    align-items: center;
-                    gap: 0.35rem;
-                    border-radius: 0.7rem;
-                    background: color-mix(in srgb, var(--guindo) 10%, transparent);
-                    color: var(--guindo);
-                    padding: 0.45rem 0.65rem;
-                    font-size: 0.76rem;
-                    font-weight: 900;
+                    display: inline-flex; align-items: center; gap: 0.4rem;
+                    padding: 0.55rem 0.95rem;
+                    border-radius: 0.75rem;
+                    background: linear-gradient(135deg, #6B1230, #4A0D21);
+                    color: white;
+                    font-size: 0.8rem;
+                    font-weight: 800;
+                    box-shadow: 0 8px 20px rgba(107,18,48,0.20);
+                    transition: transform .15s, box-shadow .15s;
+                    flex-shrink: 0;
+                }
+                .project-card:hover .project-action {
+                    transform: translateX(2px);
+                    box-shadow: 0 10px 24px rgba(107,18,48,0.30);
+                }
+                @media (prefers-color-scheme: dark) {
+                    .project-action { background: linear-gradient(135deg, #D4849A, #B95E78); color: #2B1620; }
                 }
 
-                .estado-chip {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.4rem;
-                    width: max-content;
+                /* ════════════════ ESTADO CHIP ════════════════ */
+                .chip-pill {
+                    display: inline-flex; align-items: center; gap: 0.4rem;
+                    padding: 0.3rem 0.7rem;
                     border-radius: 999px;
-                    padding: 0.3rem 0.65rem;
-                    font-size: 0.72rem;
-                    font-weight: 900;
+                    font-size: 0.72rem; font-weight: 800;
+                    border: 1px solid rgba(0,0,0,0.06);
                     white-space: nowrap;
+                    width: max-content;
                 }
-
-                .estado-chip span {
-                    width: 0.48rem;
-                    height: 0.48rem;
+                .chip-dot {
+                    display: inline-block;
+                    width: 0.5rem; height: 0.5rem;
                     border-radius: 999px;
-                    background: currentColor;
+                    box-shadow: 0 0 0 3px rgba(255,255,255,0.6);
+                    flex-shrink: 0;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .chip-pill { border-color: rgba(255,255,255,0.10); }
+                    .chip-dot  { box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
                 }
 
-                .state-review { background: rgba(201,168,76,0.18); color: #9A6C18; }
-                .state-approved { background: rgba(63,157,88,0.15); color: #2F7D46; }
-                .state-rejected { background: rgba(185,28,28,0.13); color: #B91C1C; }
-                .state-development { background: rgba(59,130,246,0.14); color: #2563EB; }
-                .state-observed { background: rgba(234,138,31,0.16); color: #B86612; }
-                .state-finished { background: rgba(110,100,88,0.15); color: var(--muted); }
-                .state-ready { background: rgba(20,184,166,0.14); color: #0F766E; }
-                .state-final { background: rgba(99,102,241,0.14); color: #4F46E5; }
-                .state-default { background: rgba(110,100,88,0.13); color: var(--muted); }
+                /* ════════════════ EMPTY / TOTAL ════════════════ */
+                .total-text {
+                    color: #6E6458;
+                    font-size: 0.78rem;
+                    font-weight: 700;
+                }
+                .total-text strong { color: #24151A; font-weight: 900; }
+                @media (prefers-color-scheme: dark) {
+                    .total-text { color: #A9978D; }
+                    .total-text strong { color: #F4EEE9; }
+                }
 
-                .empty-card {
-                    border-radius: 1rem;
-                    padding: 1.25rem;
-                    color: var(--muted);
+                .empty-block {
+                    padding: 3rem 1.5rem;
+                    text-align: center;
+                }
+                .empty-block svg { opacity: 0.3; margin: 0 auto 0.75rem; display: block; }
+                .empty-block strong {
+                    display: block;
+                    color: #24151A;
+                    font-size: 1.1rem;
+                    font-weight: 900;
+                    margin-bottom: 0.5rem;
+                }
+                .empty-block p {
+                    color: #6E6458;
+                    font-size: 0.88rem;
+                    max-width: 28rem;
+                    margin: 0 auto 0.85rem;
+                    line-height: 1.5;
+                }
+                @media (prefers-color-scheme: dark) {
+                    .empty-block strong { color: #F4EEE9; }
+                    .empty-block p      { color: #D7C9C0; }
+                }
+
+                .btn-ghost {
+                    display: inline-flex; align-items: center; gap: 0.35rem;
+                    padding: 0.55rem 0.9rem;
+                    border: 1px solid rgba(107,18,48,0.20);
+                    border-radius: 0.7rem;
+                    background: transparent;
+                    color: #6B1230;
+                    font-size: 0.8rem;
+                    font-weight: 800;
+                    cursor: pointer;
+                    text-decoration: none;
+                    transition: all .15s;
+                }
+                .btn-ghost:hover { background: rgba(107,18,48,0.08); }
+                @media (prefers-color-scheme: dark) {
+                    .btn-ghost { border-color: rgba(214,185,106,0.28); color: #D6B96A; }
+                    .btn-ghost:hover { background: rgba(214,185,106,0.10); }
                 }
             `}</style>
 
+            {/* Heurística 1 — barra de progreso */}
+            {loading && <div className="progress-bar" aria-hidden="true" />}
+
             <div className="seguimiento-page">
-                <div className="seguimiento-shell">
-                    <section className="hero-card">
-                        <div className="eyebrow">
-                            <BookOpenCheck className="h-4 w-4" />
-                            Seguimiento del Proyecto de Grado
+                <div className="shell">
+
+                    {/* ══════════════ HERO compacto ══════════════ */}
+                    <section className="glass-card">
+                        <div className="p-6">
+                            <div className="eyebrow">
+                                <BookOpenCheck className="h-4 w-4" />
+                                Seguimiento académico
+                            </div>
+                            <h1 className="text-3xl font-black tracking-tight mt-1 leading-tight">
+                                {heroTitle}
+                            </h1>
+                            <p className="text-sm text-[#6E6458] dark:text-[#A9978D] mt-2 max-w-3xl leading-7">
+                                {heroDescription}
+                            </p>
                         </div>
-
-                        <h1 className="hero-title">Evolución académica del proyecto</h1>
-
-                        <p className="hero-text">
-                            Consulta entregas, archivos, revisiones, observaciones y eventos de seguimiento.
-                            La visibilidad depende del rol actual: estudiante, docente, coordinador o administrador.
-                        </p>
                     </section>
 
+                    {/* ══════════════ KPI CARDS ══════════════ */}
                     <section className="kpi-grid">
-                        <KpiCard
-                            icon={<FolderKanban className="h-4 w-4" />}
-                            label="Proyectos"
-                            value={summary.total}
-                            note="Proyectos visibles para tu rol."
-                        />
+                        <div className="kpi-card">
+                            <div className="kpi-icon">
+                                <FolderKanban className="h-5 w-5" />
+                            </div>
+                            <div className="kpi-body">
+                                <span>Proyectos</span>
+                                <strong>{summary.total}</strong>
+                                <p>Visibles para tu rol</p>
+                            </div>
+                        </div>
 
-                        <KpiCard
-                            icon={<AlertTriangle className="h-4 w-4" />}
-                            label="Sin entregas"
-                            value={summary.sin_entregas}
-                            note="Proyectos sin entrega registrada."
-                            tone={summary.sin_entregas > 0 ? 'warning' : 'success'}
-                        />
+                        <div className={`kpi-card ${summary.sin_entregas > 0 ? 'tone-warning' : 'tone-success'}`}>
+                            <div className="kpi-icon">
+                                {summary.sin_entregas > 0 ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+                            </div>
+                            <div className="kpi-body">
+                                <span>Sin entregas</span>
+                                <strong>{summary.sin_entregas}</strong>
+                                <p>{summary.sin_entregas > 0 ? 'Requieren atención' : 'Todos tienen avance'}</p>
+                            </div>
+                        </div>
 
-                        <KpiCard
-                            icon={<MessageSquareText className="h-4 w-4" />}
-                            label="Con observaciones"
-                            value={summary.con_observaciones}
-                            note="Proyectos con correcciones o comentarios."
-                        />
+                        <div className="kpi-card tone-info">
+                            <div className="kpi-icon">
+                                <MessageSquareText className="h-5 w-5" />
+                            </div>
+                            <div className="kpi-body">
+                                <span>Con observaciones</span>
+                                <strong>{summary.con_observaciones}</strong>
+                                <p>Tienen comentarios pendientes</p>
+                            </div>
+                        </div>
 
-                        <KpiCard
-                            icon={<FileText className="h-4 w-4" />}
-                            label="Con revisiones"
-                            value={summary.con_revisiones}
-                            note="Proyectos con revisión formal."
-                        />
+                        <div className="kpi-card">
+                            <div className="kpi-icon">
+                                <FileCheck2 className="h-5 w-5" />
+                            </div>
+                            <div className="kpi-body">
+                                <span>Con revisiones</span>
+                                <strong>{summary.con_revisiones}</strong>
+                                <p>Tienen revisión formal</p>
+                            </div>
+                        </div>
                     </section>
 
-                    <section>
-                        <div className="section-head">
-                            <div>
-                                <h2 className="section-title">
-                                    {rol === 'estudiante' ? 'Mi proyecto' : 'Proyectos en seguimiento'}
-                                </h2>
-                                <p className="section-description">
-                                    Selecciona un proyecto para ver su línea de tiempo, entregas, archivos, observaciones y revisiones.
-                                </p>
+                    {/* ══════════════ FILTROS Y ORDEN ══════════════ */}
+                    <section className="glass-card">
+                        <div className="filters-bar">
+                            <div className="search-wrap">
+                                <Search className="search-icon" />
+                                <input
+                                    type="text"
+                                    className="search-input"
+                                    placeholder="Buscar por título, código, estudiante o tutor..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    title="La búsqueda filtra los proyectos visibles instantáneamente"
+                                />
+                                {search && (
+                                    <button
+                                        type="button"
+                                        className="clear-btn"
+                                        onClick={() => setSearch('')}
+                                        title="Limpiar búsqueda"
+                                        aria-label="Limpiar búsqueda"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
                             </div>
 
-                            <div className="sort-actions">
-                                <SortButton
-                                    active={filters.sort_by === 'ultimo_movimiento'}
-                                    label="Último movimiento"
-                                    direction={filters.sort_dir}
+                            <div className="sort-group">
+                                <span className="sort-label">
+                                    <Filter className="h-3.5 w-3.5" />
+                                    Ordenar por:
+                                </span>
+                                <button
+                                    type="button"
+                                    className={`sort-button ${filters.sort_by === 'ultimo_movimiento' ? 'is-active' : ''}`}
                                     onClick={() => cambiarOrden('ultimo_movimiento')}
-                                />
-
-                                <SortButton
-                                    active={filters.sort_by === 'estado'}
-                                    label="Estado"
-                                    direction={filters.sort_dir}
+                                    title="Ordenar por la fecha del último cambio"
+                                >
+                                    Movimiento
+                                    {filters.sort_by === 'ultimo_movimiento' && (
+                                        filters.sort_dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`sort-button ${filters.sort_by === 'estado' ? 'is-active' : ''}`}
                                     onClick={() => cambiarOrden('estado')}
-                                />
-
-                                <SortButton
-                                    active={filters.sort_by === 'titulo'}
-                                    label="Título"
-                                    direction={filters.sort_dir}
+                                    title="Ordenar por el estado actual"
+                                >
+                                    Estado
+                                    {filters.sort_by === 'estado' && (
+                                        filters.sort_dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`sort-button ${filters.sort_by === 'titulo' ? 'is-active' : ''}`}
                                     onClick={() => cambiarOrden('titulo')}
-                                />
+                                    title="Ordenar alfabéticamente por título"
+                                >
+                                    Título
+                                    {filters.sort_by === 'titulo' && (
+                                        filters.sort_dir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                                    )}
+                                </button>
                             </div>
                         </div>
                     </section>
 
+                    {/* ══════════════ LISTA DE PROYECTOS ══════════════ */}
                     {proyectos.length === 0 ? (
-                        <div className="empty-card">
-                            No hay proyectos disponibles para seguimiento con tu rol actual.
-                        </div>
-                    ) : (
-                        <section className="project-list">
-                            {proyectos.map((proyecto) => (
-                                <Link key={proyecto.id} href={`/seguimiento/${proyecto.id}`} className="project-card">
-                                    <div className="project-main">
-                                        <span className="project-code">{proyecto.codigo}</span>
-                                        <strong>{proyecto.titulo}</strong>
-                                        <p>
-                                            Estudiante: {proyecto.estudiante?.name || 'Sin estudiante'} · Tutor: {proyecto.tutor?.name || 'Sin tutor'}
-                                        </p>
-                                    </div>
-
-                                    <EstadoChip estado={proyecto.estado} />
-
-                                    <div className="project-info">
-                                        <strong>{formatDate(proyecto.updated_at)}</strong>
-                                        <span>Último movimiento</span>
-                                    </div>
-
-                                    <div className="project-action">
-                                        <Eye className="h-4 w-4" />
-                                        Ver seguimiento
-                                    </div>
-                                </Link>
-                            ))}
+                        <section className="glass-card">
+                            <div className="empty-block">
+                                <FolderKanban className="h-16 w-16 stroke-[1]" />
+                                <strong>Sin proyectos asignados</strong>
+                                <p>No hay proyectos de seguimiento disponibles para tu rol actual.</p>
+                            </div>
                         </section>
+                    ) : filteredProyectos.length === 0 ? (
+                        <section className="glass-card">
+                            <div className="empty-block">
+                                <Search className="h-16 w-16 stroke-[1]" />
+                                <strong>Sin resultados para "{search}"</strong>
+                                <p>Ningún proyecto coincide con tu búsqueda. Prueba con otro término o limpia el filtro.</p>
+                                <button type="button" className="btn-ghost" onClick={() => setSearch('')}>
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    Limpiar búsqueda
+                                </button>
+                            </div>
+                        </section>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+                                <span className="total-text">
+                                    Mostrando <strong>{filteredProyectos.length}</strong> de <strong>{proyectos.length}</strong> proyecto{proyectos.length === 1 ? '' : 's'}
+                                    {search && (
+                                        <> para "<strong>{search}</strong>"</>
+                                    )}
+                                </span>
+                            </div>
+
+                            <section className="project-list">
+                                {filteredProyectos.map((proyecto) => {
+                                    const estadoColor = ESTADO_COLOR[proyecto.estado] ?? '#6E6458';
+
+                                    return (
+                                        <Link
+                                            key={proyecto.id}
+                                            href={`/seguimiento/${proyecto.id}`}
+                                            className="project-card"
+                                            title={`Abrir seguimiento de ${proyecto.titulo}`}
+                                        >
+                                            <div className="project-main">
+                                                <span className="project-code">{proyecto.codigo}</span>
+                                                <div className="project-title">{proyecto.titulo}</div>
+
+                                                <div className="project-people">
+                                                    <span>
+                                                        <UserRound className="h-3.5 w-3.5 text-[#6B1230] dark:text-[#D4849A]" />
+                                                        Estudiante: <strong>{proyecto.estudiante?.name || 'Sin asignar'}</strong>
+                                                    </span>
+                                                    <span>
+                                                        <UserRound className="h-3.5 w-3.5 text-[#9A6C18] dark:text-[#D6B96A]" />
+                                                        Tutor: <strong>{proyecto.tutor?.name || 'Sin asignar'}</strong>
+                                                    </span>
+                                                </div>
+
+                                                <div className="project-counters">
+                                                    <span className={`counter-pill ${proyecto.entregas_count > 0 ? 'has-data' : ''}`} title="Cantidad de entregas">
+                                                        <FileText className="h-3 w-3" />
+                                                        {proyecto.entregas_count} entrega{proyecto.entregas_count === 1 ? '' : 's'}
+                                                    </span>
+                                                    <span className={`counter-pill ${proyecto.observaciones_count > 0 ? 'has-data' : ''}`} title="Cantidad de observaciones">
+                                                        <MessageSquareText className="h-3 w-3" />
+                                                        {proyecto.observaciones_count} obs.
+                                                    </span>
+                                                    <span className={`counter-pill ${proyecto.revisiones_count > 0 ? 'has-data' : ''}`} title="Cantidad de revisiones">
+                                                        <FileCheck2 className="h-3 w-3" />
+                                                        {proyecto.revisiones_count} rev.
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <span
+                                                className="chip-pill"
+                                                style={{ background: `${estadoColor}1A`, color: estadoColor }}
+                                                title={`Estado actual: ${estadoLabel(proyecto.estado)}`}
+                                            >
+                                                <span className="chip-dot" style={{ background: estadoColor }} />
+                                                {estadoLabel(proyecto.estado)}
+                                            </span>
+
+                                            <div className="project-time">
+                                                <div className="project-time-label">Último movimiento</div>
+                                                <div className="project-time-value" title={formatDate(proyecto.updated_at)}>
+                                                    <Clock className="h-3.5 w-3.5 opacity-60" />
+                                                    {formatRelative(proyecto.updated_at)}
+                                                </div>
+                                            </div>
+
+                                            <span className="project-action">
+                                                Abrir
+                                                <ChevronRight className="h-4 w-4" />
+                                            </span>
+                                        </Link>
+                                    );
+                                })}
+                            </section>
+                        </>
                     )}
+
                 </div>
             </div>
         </>
@@ -606,9 +853,6 @@ export default function SeguimientoIndex({ seguimientoData }: Props) {
 
 SeguimientoIndex.layout = {
     breadcrumbs: [
-        {
-            title: 'Seguimiento',
-            href: '/seguimiento',
-        },
+        { title: 'Seguimiento', href: '/seguimiento' },
     ],
 };
