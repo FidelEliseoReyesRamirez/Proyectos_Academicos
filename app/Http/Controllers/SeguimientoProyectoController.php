@@ -140,6 +140,102 @@ class SeguimientoProyectoController extends Controller
         ]);
     }
 
+    public function storeReunionTutoria(Request $request, Proyecto $proyecto): RedirectResponse
+    {
+        $usuario = $request->user();
+        $rol = strtolower((string) $usuario->rol);
+
+        abort_unless($rol === 'docente' && (int) $proyecto->tutor_id === (int) $usuario->id, 403);
+
+        $validated = $request->validate([
+            'fecha_reunion' => ['required', 'date'],
+            'modalidad' => ['required', 'string', 'in:presencial,virtual'],
+            'temas_tratados' => ['required', 'string', 'max:5000'],
+            'acuerdos' => ['required', 'string', 'max:5000'],
+        ]);
+
+        $proyecto->loadMissing([
+            'estudiante:id,name,email,rol',
+            'tutor:id,name,email,rol',
+            'revisores:id,name,email,rol',
+        ]);
+
+        $eventoKafka = DB::transaction(function () use ($validated, $proyecto, $usuario): array {
+            $reunionId = DB::table('proyecto_reuniones_tutoria')->insertGetId([
+                'proyecto_id' => (int) $proyecto->id,
+                'tutor_id' => (int) $usuario->id,
+                'fecha_reunion' => $validated['fecha_reunion'],
+                'modalidad' => $validated['modalidad'],
+                'temas_tratados' => $validated['temas_tratados'],
+                'acuerdos' => $validated['acuerdos'],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            ProyectoEvento::create([
+                'proyecto_id' => (int) $proyecto->id,
+                'actor_id' => (int) $usuario->id,
+                'tipo_evento' => 'reunion_tutoria_registrada',
+                'descripcion' => 'El tutor registró una reunión de seguimiento.',
+                'metadata' => [
+                    'reunion_id' => (int) $reunionId,
+                    'fecha_reunion' => $validated['fecha_reunion'],
+                    'modalidad' => $validated['modalidad'],
+                    'temas_tratados' => $validated['temas_tratados'],
+                    'acuerdos' => $validated['acuerdos'],
+                ],
+            ]);
+
+            return [
+                'event_id' => (string) Str::uuid(),
+                'event' => 'proyecto.reunion_tutoria_registrada',
+                'module' => 'Seguimiento',
+                'aggregate_type' => 'proyecto',
+                'aggregate_id' => (int) $proyecto->id,
+                'occurred_at' => now()->toISOString(),
+                'data' => [
+                    'proyecto' => [
+                        'id' => (int) $proyecto->id,
+                        'codigo' => $proyecto->codigo,
+                        'titulo' => $proyecto->titulo,
+                        'estado' => (string) $proyecto->estado,
+                    ],
+                    'reunion' => [
+                        'id' => (int) $reunionId,
+                        'fecha_reunion' => $validated['fecha_reunion'],
+                        'modalidad' => $validated['modalidad'],
+                        'temas_tratados' => $validated['temas_tratados'],
+                        'acuerdos' => $validated['acuerdos'],
+                    ],
+                    'tutor' => $proyecto->tutor ? [
+                        'id' => (int) $proyecto->tutor->id,
+                        'nombre' => $proyecto->tutor->name,
+                        'email' => $proyecto->tutor->email,
+                    ] : null,
+                    'estudiante' => $proyecto->estudiante ? [
+                        'id' => (int) $proyecto->estudiante->id,
+                        'nombre' => $proyecto->estudiante->name,
+                        'email' => $proyecto->estudiante->email,
+                    ] : null,
+                    'revisores' => $proyecto->revisores->map(fn ($revisor) => [
+                        'id' => (int) $revisor->id,
+                        'nombre' => $revisor->name,
+                        'email' => $revisor->email,
+                    ])->values()->all(),
+                ],
+            ];
+        });
+
+        $this->publicarEventoSeguimiento($eventoKafka, $proyecto);
+
+        return redirect()
+            ->route('seguimiento.show', $proyecto)
+            ->with('toast', [
+                'type' => 'success',
+                'message' => 'Reunión de tutoría registrada correctamente.',
+            ]);
+    }
+
     public function storeEntrega(Request $request, Proyecto $proyecto): RedirectResponse
     {
         $usuario = $request->user();
@@ -999,6 +1095,34 @@ class SeguimientoProyectoController extends Controller
                 'created_at' => $evento->created_at,
                 'actor' => $this->mapUsuario($evento->actor),
             ])->values(),
+            'reuniones_tutoria' => DB::table('proyecto_reuniones_tutoria as r')
+                ->leftJoin('users as u', 'u.id', '=', 'r.tutor_id')
+                ->where('r.proyecto_id', $proyecto->id)
+                ->orderByDesc('r.fecha_reunion')
+                ->select([
+                    'r.id',
+                    'r.fecha_reunion',
+                    'r.modalidad',
+                    'r.temas_tratados',
+                    'r.acuerdos',
+                    'r.created_at',
+                    'u.name as tutor_nombre',
+                    'u.email as tutor_email',
+                ])
+                ->get()
+                ->map(fn ($reunion) => [
+                    'id' => (int) $reunion->id,
+                    'fecha_reunion' => $reunion->fecha_reunion,
+                    'modalidad' => $reunion->modalidad,
+                    'temas_tratados' => $reunion->temas_tratados,
+                    'acuerdos' => $reunion->acuerdos,
+                    'created_at' => $reunion->created_at,
+                    'tutor' => [
+                        'name' => $reunion->tutor_nombre,
+                        'email' => $reunion->tutor_email,
+                    ],
+                ])
+                ->values(),
         ];
     }
 
@@ -1065,6 +1189,7 @@ class SeguimientoProyectoController extends Controller
             'matriz_correccion_subida' => 'Matriz de corrección subida',
             'estado_actualizado' => 'Estado actualizado',
             'derivado_revision' => 'Derivado a revisión',
+            'reunion_tutoria_registrada' => 'Reunión de tutoría registrada',
             default => str_replace('_', ' ', ucfirst($tipo)),
         };
     }

@@ -45,6 +45,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->whereNumber('proyecto')
             ->name('seguimiento.entregas.store');
 
+        Route::post('seguimiento/{proyecto}/reuniones-tutoria', [SeguimientoProyectoController::class, 'storeReunionTutoria'])
+            ->whereNumber('proyecto')
+            ->name('seguimiento.reuniones-tutoria.store');
+
         Route::patch('seguimiento/{proyecto}/documento-trabajo', [SeguimientoProyectoController::class, 'updateDocumentoTrabajo'])
             ->whereNumber('proyecto')
             ->name('seguimiento.documento-trabajo.update');

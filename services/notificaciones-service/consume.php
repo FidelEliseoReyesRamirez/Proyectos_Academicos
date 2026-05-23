@@ -104,6 +104,10 @@ function procesarMensaje(?string $rawPayload): void
             procesarArchivoReemplazado($payload);
             break;
 
+        case 'proyecto.reunion_tutoria_registrada':
+            procesarReunionTutoriaRegistrada($payload);
+            break;
+
         default:
             print "Evento ignorado: {$event}\n";
             break;
@@ -404,6 +408,43 @@ function procesarArchivoReemplazado(array $payload): void
 
     enviarNotificacionMultiple('proyecto.archivo_reemplazado', $destinatarios, $subject, $body);
 }
+
+function procesarReunionTutoriaRegistrada(array $payload): void
+{
+    $data = $payload['data'] ?? [];
+
+    $proyecto = $data['proyecto'] ?? [];
+    $reunion = $data['reunion'] ?? [];
+    $estudiante = $data['estudiante'] ?? [];
+    $tutor = $data['tutor'] ?? [];
+    $revisores = is_array($data['revisores'] ?? null) ? $data['revisores'] : [];
+
+    $codigo = $proyecto['codigo'] ?? 'SIN-CODIGO';
+    $tituloProyecto = $proyecto['titulo'] ?? 'Sin título';
+    $fecha = $reunion['fecha_reunion'] ?? 'Sin fecha';
+    $modalidad = $reunion['modalidad'] ?? 'Sin modalidad';
+    $temas = $reunion['temas_tratados'] ?? 'Sin temas registrados';
+    $acuerdos = $reunion['acuerdos'] ?? 'Sin acuerdos registrados';
+
+    $destinatarios = destinatariosAcademicos($estudiante, $tutor, $revisores);
+
+    $subject = "[Seguimiento] Reunión de tutoría registrada - {$codigo}";
+    $body = crearCuerpoEventoAcademico(
+        'Reunión de tutoría registrada',
+        'Se registró una reunión de seguimiento entre tutor y estudiante.',
+        [
+            'Proyecto' => "{$codigo} - {$tituloProyecto}",
+            'Fecha' => $fecha,
+            'Modalidad' => labelHumano($modalidad),
+            'Temas tratados' => $temas,
+            'Acuerdos' => $acuerdos,
+        ],
+        'Ingrese al sistema para consultar la constancia de la reunión y los compromisos establecidos.'
+    );
+
+    enviarNotificacionMultiple('proyecto.reunion_tutoria_registrada', $destinatarios, $subject, $body);
+}
+
 
 function destinatariosAcademicos(?array $estudiante, ?array $tutor, array $revisores): array
 {

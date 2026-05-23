@@ -38,6 +38,19 @@ type Revision = {
     comentario?: string | null; created_at: string; revisor: Usuario;
 };
 
+type ReunionTutoria = {
+    id: number;
+    fecha_reunion: string;
+    modalidad: 'presencial' | 'virtual' | string;
+    temas_tratados: string;
+    acuerdos: string;
+    created_at: string;
+    tutor: {
+        name?: string | null;
+        email?: string | null;
+    } | null;
+};
+
 type Entrega = {
     id: number; titulo: string; descripcion?: string | null;
     numero_version: number; estado: string;
@@ -56,6 +69,7 @@ type Proyecto = {
     estudiante: Usuario; tutor: Usuario; revisores: Usuario[];
     entregas: Entrega[]; archivos: Archivo[];
     observaciones: Observacion[]; revisiones: Revision[];
+    reuniones_tutoria?: ReunionTutoria[];
     eventos: { id: number; tipo_evento: string; descripcion: string; created_at: string; actor: Usuario; }[];
 };
 
@@ -227,11 +241,24 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
     const [showRevision, setShowRevision] = useState(false);
     const [showTutorDecision, setShowTutorDecision] = useState(false);
     const [showDoc, setShowDoc]           = useState(false);
+    const [showReunion, setShowReunion]   = useState(false);
 
     /* Forms */
     const documentoForm = useForm({
         documento_trabajo_titulo: proyecto.documento_trabajo?.titulo || '',
         documento_trabajo_url:    proyecto.documento_trabajo?.url || '',
+    });
+
+    const reunionForm = useForm<{
+        fecha_reunion: string;
+        modalidad: 'presencial' | 'virtual';
+        temas_tratados: string;
+        acuerdos: string;
+    }>({
+        fecha_reunion: '',
+        modalidad: 'presencial',
+        temas_tratados: '',
+        acuerdos: '',
     });
 
     const entregaForm = useForm<{ titulo: string; descripcion: string; archivo: File | null; }>({
@@ -307,6 +334,18 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
         documentoForm.patch(`/seguimiento/${proyecto.id}/documento-trabajo`, {
             preserveScroll: true,
             onSuccess: () => setShowDoc(false),
+        });
+    };
+
+    const submitReunion = (e: FormEvent) => {
+        e.preventDefault();
+
+        reunionForm.post(`/seguimiento/${proyecto.id}/reuniones-tutoria`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                reunionForm.reset();
+                setShowReunion(false);
+            },
         });
     };
 
@@ -480,6 +519,79 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                         </button>
                         <button type="submit" className="btn-primary" disabled={documentoForm.processing}>
                             {documentoForm.processing ? 'Guardando...' : 'Guardar enlace'}
+                        </button>
+                    </div>
+                </form>
+            </FormDrawer>
+
+            <FormDrawer
+                open={showReunion}
+                title="Registrar reunión de tutoría"
+                subtitle="Deja constancia formal de la sesión, los temas tratados y los acuerdos definidos."
+                icon={<CalendarClock className="h-5 w-5" />}
+                onClose={() => !reunionForm.processing && setShowReunion(false)}
+                processing={reunionForm.processing}
+            >
+                <form onSubmit={submitReunion} className="space-y-4">
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="reunion-fecha">Fecha y hora de reunión *</label>
+                        <input
+                            id="reunion-fecha"
+                            type="datetime-local"
+                            className="custom-input"
+                            value={reunionForm.data.fecha_reunion}
+                            onChange={(e) => reunionForm.setData('fecha_reunion', e.target.value)}
+                        />
+                        {reunionForm.errors.fecha_reunion && <div className="error-text">{reunionForm.errors.fecha_reunion}</div>}
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="reunion-modalidad">Modalidad *</label>
+                        <select
+                            id="reunion-modalidad"
+                            className="custom-input"
+                            value={reunionForm.data.modalidad}
+                            onChange={(e) => reunionForm.setData('modalidad', e.target.value as 'presencial' | 'virtual')}
+                        >
+                            <option value="presencial">Presencial</option>
+                            <option value="virtual">Virtual</option>
+                        </select>
+                        {reunionForm.errors.modalidad && <div className="error-text">{reunionForm.errors.modalidad}</div>}
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="reunion-temas">Temas tratados *</label>
+                        <textarea
+                            id="reunion-temas"
+                            className="custom-input"
+                            rows={4}
+                            value={reunionForm.data.temas_tratados}
+                            onChange={(e) => reunionForm.setData('temas_tratados', e.target.value)}
+                            placeholder="Ej. Revisión de objetivos, alcance, cronograma y observaciones del último avance."
+                        />
+                        {reunionForm.errors.temas_tratados && <div className="error-text">{reunionForm.errors.temas_tratados}</div>}
+                    </div>
+
+                    <div className="field-group">
+                        <label className="field-label" htmlFor="reunion-acuerdos">Acuerdos y compromisos *</label>
+                        <textarea
+                            id="reunion-acuerdos"
+                            className="custom-input"
+                            rows={4}
+                            value={reunionForm.data.acuerdos}
+                            onChange={(e) => reunionForm.setData('acuerdos', e.target.value)}
+                            placeholder="Ej. El estudiante enviará el capítulo corregido hasta el viernes; el tutor revisará la nueva versión."
+                        />
+                        {reunionForm.errors.acuerdos && <div className="error-text">{reunionForm.errors.acuerdos}</div>}
+                    </div>
+
+                    <div className="drawer-actions">
+                        <button type="button" className="btn-secondary" onClick={() => setShowReunion(false)} disabled={reunionForm.processing}>
+                            Cancelar
+                        </button>
+                        <button type="submit" className="btn-primary" disabled={reunionForm.processing}>
+                            <CalendarClock className="h-4 w-4 mr-1" />
+                            {reunionForm.processing ? 'Registrando...' : 'Registrar reunión'}
                         </button>
                     </div>
                 </form>
@@ -1600,6 +1712,57 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                                 </a>
                             )}
                         </div>
+                    </section>
+
+                    {/* ══════════════ REUNIONES DE TUTORÍA ══════════════ */}
+                    <section className="glass-card p-6">
+                        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                            <div className="section-title">
+                                <CalendarClock className="h-5 w-5 text-[#9A6C18] dark:text-[#D6B96A]" />
+                                Reuniones de tutoría
+                            </div>
+
+                            {permisos.puede_accion_tutor && (
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    onClick={() => setShowReunion(true)}
+                                    title="Registrar una nueva reunión de tutoría"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Registrar reunión
+                                </button>
+                            )}
+                        </div>
+
+                        {proyecto.reuniones_tutoria && proyecto.reuniones_tutoria.length > 0 ? (
+                            <div className="grid gap-3">
+                                {proyecto.reuniones_tutoria.map((reunion) => (
+                                    <div key={reunion.id} className="file-row">
+                                        <div className="file-row-icon">
+                                            <CalendarClock className="h-4 w-4" />
+                                        </div>
+                                        <div className="file-row-body">
+                                            <strong>
+                                                {formatDate(reunion.fecha_reunion)} · {label(reunion.modalidad)}
+                                            </strong>
+                                            <span>
+                                                Tutor: {reunion.tutor?.name || 'Sin registro'}
+                                            </span>
+                                            <div className="mt-2 text-sm text-[#6E6458] dark:text-[#D7C9C0] leading-relaxed">
+                                                <p><strong>Temas:</strong> {reunion.temas_tratados}</p>
+                                                <p><strong>Acuerdos:</strong> {reunion.acuerdos}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="empty-block">
+                                <CalendarClock className="h-8 w-8 mx-auto" />
+                                <p>Aún no hay reuniones de tutoría registradas.</p>
+                            </div>
+                        )}
                     </section>
 
                     {/* ══════════════ GRID 2 COL: Entregas + Timeline ══════════════ */}
