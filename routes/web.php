@@ -8,6 +8,8 @@ use App\Http\Controllers\SeguimientoProyectoController;
 use App\Http\Controllers\UsuariosController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
+use App\Http\Controllers\FirebaseAuthController;
+use App\Http\Controllers\ProyectoChatController;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,6 +28,8 @@ Route::inertia('/', 'welcome', [
 */
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('firebase/token', [FirebaseAuthController::class, 'token'])->name('firebase.token');
+    Route::get('proyectos/{proyecto}/chat', [ProyectoChatController::class, 'show'])->name('proyectos.chat');
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::middleware(['role:coordinador,admin'])->group(function () {

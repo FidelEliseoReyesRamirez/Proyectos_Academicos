@@ -318,14 +318,11 @@ services:
       - sudosquad_net
     command: >
       sh -c "
-        while [ ! -f vendor/autoload.php ]; do
-          echo 'Esperando composer install de Laravel...';
-          sleep 2;
-        done &&
         npm install &&
-        rm -rf node_modules/.vite &&
-        npm run dev -- --host 0.0.0.0 --port 5173
-      "
+        rm -f public/hot &&
+        npm run build &&
+        tail -f /dev/null
+      " 
 
 volumes:
   sudosquad_pgdata:

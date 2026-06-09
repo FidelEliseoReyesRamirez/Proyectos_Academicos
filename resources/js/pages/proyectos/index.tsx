@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import {
     Plus, Search, Filter, FolderKanban, X, CalendarDays,
-    Pencil, Trash2, ChevronDown, Check, UserCircle, Briefcase, Activity,
+    Pencil, Trash2, ChevronDown, Check, UserCircle, Briefcase, Activity, MessageSquareText,
 } from 'lucide-react';
 
 type Periodo = { id: number; nombre: string };
@@ -734,6 +734,7 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
                 }
                 .action-btn:hover              { background: rgba(107,18,48,0.08); color: #6B1230; }
                 .action-btn.is-state:hover     { color: #9A6C18; background: rgba(201,168,76,0.12); }
+                .action-btn.is-chat:hover      { color: #2563EB; background: rgba(37,99,235,0.10); }
                 .action-btn.is-delete:hover    { color: #B91C1C; background: rgba(185,28,28,0.10); }
                 @media (prefers-color-scheme: dark) {
                     .action-btn       { color: #A8A094; }
@@ -1151,6 +1152,15 @@ export default function Index({ proyectos, periodos, tutores, eliminados_count, 
 
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center justify-end gap-1">
+                                                            <Link
+                                                                href={`/proyectos/${p.id}/chat`}
+                                                                className="action-btn is-chat"
+                                                                title="Abrir chat"
+                                                                aria-label={`Abrir chat del proyecto ${p.codigo}`}
+                                                            >
+                                                                <MessageSquareText className="h-4 w-4" />
+                                                            </Link>
+
                                                             <Link
                                                                 href={`/proyectos/${p.id}/edit`}
                                                                 className="action-btn"

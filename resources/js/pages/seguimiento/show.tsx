@@ -1584,10 +1584,27 @@ export default function SeguimientoShow({ seguimientoData }: Props) {
                     {/* ══════════════ HERO (compacto) ══════════════ */}
                     <section className="glass-card">
                         <div className="p-6">
-                            <Link href="/seguimiento" className="back-link" title="Volver al listado de proyectos">
-                                <ArrowLeft className="h-4 w-4" />
-                                Volver
-                            </Link>
+                            <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                                <Link
+                                    href="/seguimiento"
+                                    className="back-link"
+                                    style={{ marginBottom: 0 }}
+                                    title="Volver al listado de proyectos"
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                    Volver
+                                </Link>
+
+                                <Link
+                                    href={`/proyectos/${proyecto.id}/chat`}
+                                    className="btn-primary"
+                                    title="Abrir chat del proyecto"
+                                    aria-label={`Abrir chat del proyecto ${proyecto.codigo}`}
+                                >
+                                    <MessageSquareText className="h-4 w-4" />
+                                    Chat
+                                </Link>
+                            </div>
 
                             <div className="eyebrow">
                                 <BookOpenCheck className="h-4 w-4" />
