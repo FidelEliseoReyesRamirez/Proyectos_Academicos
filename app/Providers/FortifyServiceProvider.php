@@ -32,6 +32,44 @@ class FortifyServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        \Illuminate\Support\Facades\RateLimiter::for('two-factor', function (\Illuminate\Http\Request $request) {
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by(
+                (string) ($request->session()->get('login.id') ?: $request->ip())
+            );
+        });
+
+        \Illuminate\Support\Facades\RateLimiter::for('login', function (\Illuminate\Http\Request $request) {
+            $email = (string) $request->input('email');
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by(
+                strtolower($email).'|'.$request->ip()
+            );
+        });
+
+
+        $this->app->singleton(\Laravel\Fortify\Contracts\LoginResponse::class, function () {
+            return new class implements \Laravel\Fortify\Contracts\LoginResponse {
+                public function toResponse($request)
+                {
+                    return $request->wantsJson()
+                        ? response()->json([], 204)
+                        : redirect()->route('dashboard');
+                }
+            };
+        });
+
+        $this->app->singleton(\Laravel\Fortify\Contracts\TwoFactorLoginResponse::class, function () {
+            return new class implements \Laravel\Fortify\Contracts\TwoFactorLoginResponse {
+                public function toResponse($request)
+                {
+                    return $request->wantsJson()
+                        ? response()->json([], 204)
+                        : redirect()->route('dashboard');
+                }
+            };
+        });
+
+
         Fortify::createUsersUsing(CreateNewUser::class);
 
         $this->configurarCorreoRecuperacionPassword();
