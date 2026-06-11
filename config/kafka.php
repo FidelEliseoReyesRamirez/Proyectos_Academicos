@@ -42,5 +42,6 @@ return [
             'KAFKA_TOPIC_AUTH_EVENTOS',
             'auth.eventos'
         ),
+        'calendario_eventos' => env('KAFKA_TOPIC_CALENDARIO_EVENTOS', 'calendario.eventos'),
     ],
 ];

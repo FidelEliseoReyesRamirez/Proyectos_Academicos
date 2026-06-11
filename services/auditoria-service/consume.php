@@ -13,6 +13,7 @@ $topicProyectoRestaurado = getenv('KAFKA_TOPIC_PROYECTO_RESTAURADO') ?: 'proyect
 $topicProyectoEntregas = getenv('KAFKA_TOPIC_PROYECTO_ENTREGAS') ?: 'proyectos.entregas';
 $topicUsuariosEventos = getenv('KAFKA_TOPIC_USUARIOS_EVENTOS') ?: 'usuarios.eventos';
 $topicAuthEventos = getenv('KAFKA_TOPIC_AUTH_EVENTOS') ?: 'auth.eventos';
+$topicCalendarioEventos = getenv('KAFKA_TOPIC_CALENDARIO_EVENTOS') ?: 'calendario.eventos';
 
 $auditDbHost = getenv('AUDIT_DB_HOST') ?: 'sudosquad_auditoria_db';
 $auditDbPort = getenv('AUDIT_DB_PORT') ?: '5432';

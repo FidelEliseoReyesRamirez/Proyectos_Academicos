@@ -149,6 +149,7 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+      KAFKA_TOPIC_CALENDARIO_EVENTOS: calendario.eventos
 
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
@@ -201,6 +202,7 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+      KAFKA_TOPIC_CALENDARIO_EVENTOS: calendario.eventos
 
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}
@@ -241,6 +243,7 @@ services:
       KAFKA_TOPIC_PROYECTO_RESTAURADO: proyectos.restaurados
       KAFKA_TOPIC_USUARIOS_EVENTOS: usuarios.eventos
       KAFKA_TOPIC_AUTH_EVENTOS: auth.eventos
+      KAFKA_TOPIC_CALENDARIO_EVENTOS: calendario.eventos
 
       MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
       MAIL_PORT: ${MAIL_PORT:-587}

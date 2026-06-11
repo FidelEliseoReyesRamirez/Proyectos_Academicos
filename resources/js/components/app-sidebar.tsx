@@ -1,5 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
-import { ClipboardList, LayoutGrid, UsersRound, BookOpenCheck } from 'lucide-react';
+import { ClipboardList, LayoutGrid, UsersRound, BookOpenCheck,
+    CalendarDays,
+} from 'lucide-react';
 
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -39,6 +41,12 @@ export function AppSidebar() {
 
     // 1. Elementos base para todos los roles
     const mainNavItems: NavItem[] = [
+    {
+        title: 'Calendario',
+        href: '/calendario',
+        icon: CalendarDays,
+    },
+
         {
             title: 'Dashboard',
             href: dashboard(),

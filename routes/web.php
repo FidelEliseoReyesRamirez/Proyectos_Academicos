@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuditoriaController;
+use App\Http\Controllers\CalendarioController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodoAcademicoController;
 use App\Http\Controllers\ProyectoController;
@@ -31,6 +32,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('firebase/token', [FirebaseAuthController::class, 'token'])->name('firebase.token');
     Route::get('proyectos/{proyecto}/chat', [ProyectoChatController::class, 'show'])->name('proyectos.chat');
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('calendario', [CalendarioController::class, 'index'])->name('calendario.index');
+
+
+    Route::middleware(['role:coordinador,admin'])->prefix('calendario')->name('calendario.')->group(function () {
+        Route::post('/', [CalendarioController::class, 'store'])->name('store');
+        Route::put('/{actividad}', [CalendarioController::class, 'update'])
+            ->whereNumber('actividad')
+            ->name('update');
+        Route::delete('/{actividad}', [CalendarioController::class, 'destroy'])
+            ->whereNumber('actividad')
+            ->name('destroy');
+    });
 
     Route::middleware(['role:coordinador,admin'])->group(function () {
         Route::get('auditoria', [AuditoriaController::class, 'index'])->name('auditoria.index');
