@@ -10,6 +10,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "google/auth": "*",
         "inertiajs/inertia-laravel": "^3.0",
         "kreait/firebase-php": "^8.2",
         "laravel/fortify": "^1.34",
